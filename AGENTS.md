@@ -51,6 +51,9 @@ mistakes. Load those only as needed.
 Prerequisites: Loup 1.26.0 (`loup-bootstrap` on `PATH`), `make`, `bash`,
 `curl` and `python3` (the end-to-end tests use it to find a free port).
 
+Loup Lite comes from <https://github.com/code-craft-ai-company/loup-releases>;
+[README.md](README.md#installing-loup-lite) has the install commands.
+
 | Task | Command | Notes |
 |------|---------|-------|
 | Serve a directory | `make run ARGS="-p 8000 tests/fixtures/site"` | `loup-bootstrap run --deny-all --allow-fs --allow-net bin/httpd.lpscr -- ARGS` |
