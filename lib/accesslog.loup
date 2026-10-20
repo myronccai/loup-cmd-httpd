@@ -1,0 +1,64 @@
+@mode(host.dual)
+
+# Access log lines in Combined Log Format, which loup-cmd-logwatch reads:
+#   - - - [20/Oct/2026:09:15:02 +0000] "GET /docs/ HTTP/1.1" 200 412 "-" "curl/8.9.1"
+# net.http does not give the handler the client's address, so the host field
+# is `-`.
+
+from net.http import (Request, Response);
+from system.text import (padStart);
+
+let MONTHS: list[string] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+pub struct CivilDate {
+    pub year: int;
+    pub month: int;
+    pub day: int;
+}
+
+# The civil date of a day number (days since 1970-01-01).
+pub func civil_from_days(days: int): CivilDate {
+    let z = days + 719468;
+    let era = (if (z >= 0) { z } else { z - 146096 }) / 146097;
+    let doe = z - era * 146097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if (mp < 10) { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + (if (month <= 2) { 1 } else { 0 });
+    return CivilDate(year = year, month = month, day = day);
+}
+
+func pad2(n: int): string {
+    return padStart(str(n), 2, "0");
+}
+
+# `20/Oct/2026:09:15:02 +0000` for seconds since 1970 (UTC).
+pub func clf_time(epoch_seconds: int): string {
+    let days = epoch_seconds / 86400;
+    let rest = epoch_seconds % 86400;
+    let date = civil_from_days(days);
+    return pad2(date.day) + "/" + MONTHS[date.month - 1] + "/" + str(date.year) + ":" + pad2(rest / 3600) + ":" + pad2((rest / 60) % 60) + ":" + pad2(rest % 60) + " +0000";
+}
+
+# A quoted log field: `"` and `\` escaped, `-` for an empty value.
+func quoted(text: string): string {
+    let value = if (text.len() == 0) { "-" } else { text };
+    return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+}
+
+pub func log_line(req: Request, resp: Response, epoch_seconds: int): string {
+    let size = resp.body.byteLength();
+    let request = req.method + " " + req.target + " " + req.version.toString();
+    let fields = [
+        "- - -",
+        "[" + clf_time(epoch_seconds) + "]",
+        quoted(request),
+        str(resp.status),
+        if (size == 0) { "-" } else { str(size) },
+        quoted(req.header("Referer") ?? ""),
+        quoted(req.header("User-Agent") ?? ""),
+    ];
+    return fields.join(" ");
+}

@@ -1,0 +1,124 @@
+@mode(host.dual)
+
+# The request handler: a plain function from Request to Response. The
+# server calls it for each connection; the tests call it with
+# `parseRequest("GET / HTTP/1.1\r\n\r\n")` and no socket at all.
+
+from net.http import (Request, Response, statusReason);
+from io.fs import (isDir, isFile, listDir);
+from .appinfo import (SERVER);
+from .paths import (path_segments, fs_path, display_path);
+from .mime import (content_type);
+from .listing import (Entry, listing_page);
+from .etag import (etag_of, etag_matches);
+
+# What bytes.decode() puts in place of bytes that are not UTF-8.
+let REPLACEMENT: string = str(char.of(65533));
+
+# A plain-text error response, such as `404 Not Found`.
+pub func error_response(code: int): Response {
+    return Response(code, "text/plain; charset=utf-8", str(code) + " " + statusReason(code) + "\n");
+}
+
+# Whether `raw` decoded to `text` unchanged, that is, it is UTF-8 text. (A
+# file that really contains U+FFFD counts as binary.)
+pub func is_text(raw: bytes, text: string): bool {
+    return text.byteLength() == raw.len() and !text.contains(REPLACEMENT);
+}
+
+# The response for a file's content: 200 with its type and ETag, 304 when
+# the client's If-None-Match names that ETag, or 501 for a binary file:
+# net.http writes a body as a UTF-8 string, so other bytes cannot be sent
+# unchanged.
+pub func content_response(req: Request, name: string, raw: bytes): Response {
+    let text = raw.decode();
+    if (!is_text(raw, text)) {
+        return error_response(501);
+    }
+    let tag = etag_of(raw);
+    let condition = req.header("If-None-Match") ?? "";
+    if (condition.len() > 0 and etag_matches(condition, tag)) {
+        let unchanged = Response(304, "", "");
+        unchanged.headers.set("ETag", tag);
+        return unchanged;
+    }
+    let resp = Response(200, content_type(name), text);
+    resp.headers.set("ETag", tag);
+    return resp;
+}
+
+func file_response(req: Request, path: string): Response {
+    try {
+        let raw = readBytes(path);
+        return content_response(req, path, raw);
+    } catch (IoError as e) {
+        return error_response(403);
+    }
+}
+
+func listing_response(url_path: string, dir: string): Response {
+    var entries: list[Entry] = [];
+    try {
+        for (name in listDir(dir)) {
+            if (!name.startsWith(".")) {
+                entries.push(Entry(name = name, is_dir = isDir(fs_path(dir, [name]))));
+            }
+        }
+    } catch (IoError as e) {
+        return error_response(403);
+    }
+    return Response(200, "text/html; charset=utf-8", listing_page(url_path, entries));
+}
+
+# Answers one request for the files under `root`.
+pub func handle(root: string, req: Request): Response {
+    if (req.method != "GET" and req.method != "HEAD") {
+        let refused = error_response(405);
+        refused.headers.set("Allow", "GET, HEAD");
+        return refused;
+    }
+    let segments = match path_segments(req.path) {
+        Ok(found) => found,
+        Err(code) => { return error_response(code); },
+    };
+    let path = fs_path(root, segments);
+    if (isDir(path)) {
+        if (!req.path.endsWith("/")) {
+            let query = if (req.rawQuery.len() > 0) { "?" + req.rawQuery } else { "" };
+            return Response.redirect(req.path + "/" + query, 301);
+        }
+        let index = fs_path(path, ["index.html"]);
+        if (isFile(index)) {
+            return file_response(req, index);
+        }
+        return listing_response(display_path(segments, true), path);
+    }
+    if (isFile(path)) {
+        return file_response(req, path);
+    }
+    return error_response(404);
+}
+
+# Runs `answer` for `req` and finishes the response for the wire: an
+# exception becomes a 500 (the server keeps running), every response names
+# the server, and a HEAD response loses its body.
+pub func finish(req: Request, answer: fn(Request): Response): Response {
+    var resp = error_response(500);
+    try {
+        resp = answer(req);
+    } catch (Exception as e) {
+        resp = error_response(500);
+    }
+    resp.headers.set("Server", SERVER);
+    if (req.method == "HEAD") {
+        safe {
+            resp.body = "";
+        }
+    }
+    return resp;
+}
+
+# The server's handler: handle() for the files under `root`, finished.
+pub func respond(root: string, req: Request): Response {
+    return finish(req, func(r: Request): Response { return handle(root, r); });
+}

@@ -1,0 +1,63 @@
+@mode(host.dual)
+
+# The HTML page that lists a directory without an index.html.
+
+from data.query import (percentEncode);
+
+pub struct Entry {
+    pub name: string;
+    pub is_dir: bool;
+}
+
+# Escapes text for HTML element content and attribute values.
+pub func html_escape(text: string): string {
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;").replace("'", "&#39;");
+}
+
+func compare_text(a: string, b: string): int {
+    return if (a < b) { -1 } else if (a > b) { 1 } else { 0 };
+}
+
+# Directories first, then files; each group by name.
+pub func sorted_entries(entries: list[Entry]): list[Entry] {
+    var out: list[Entry] = [];
+    for (e in entries) {
+        out.push(e);
+    }
+    out.sort(func(a: Entry, b: Entry): int {
+        if (a.is_dir != b.is_dir) {
+            return if (a.is_dir) { -1 } else { 1 };
+        }
+        return compare_text(a.name, b.name);
+    });
+    return out;
+}
+
+# One `<li>` with a percent-encoded link and an escaped label.
+func item(href: string, label: string): string {
+    return "<li><a href=\"" + href + "\">" + html_escape(label) + "</a></li>";
+}
+
+# The listing of the directory at URL path `url_path` (ends with `/`).
+pub func listing_page(url_path: string, entries: list[Entry]): string {
+    let title = "Index of " + html_escape(url_path);
+    var lines: list[string] = [
+        "<!DOCTYPE html>",
+        "<html>",
+        "<head><meta charset=\"utf-8\"><title>" + title + "</title></head>",
+        "<body>",
+        "<h1>" + title + "</h1>",
+        "<ul>",
+    ];
+    if (url_path != "/") {
+        lines.push(item("../", "../"));
+    }
+    for (e in sorted_entries(entries)) {
+        let suffix = if (e.is_dir) { "/" } else { "" };
+        lines.push(item(percentEncode(e.name, "") + suffix, e.name + suffix));
+    }
+    lines.push("</ul>");
+    lines.push("</body>");
+    lines.push("</html>");
+    return lines.join("\n") + "\n";
+}

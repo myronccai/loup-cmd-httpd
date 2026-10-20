@@ -1,0 +1,47 @@
+@mode(host.dual)
+
+# Entity tags. io.fs has no stat() in Loup 1.26, so there is no modification
+# time for Last-Modified; the tag is a hash of the content instead.
+
+from system.text import (padStart);
+
+let HEX: string = "0123456789abcdef";
+
+func hex(n: int, width: int): string {
+    var out = "";
+    var v = n;
+    while (v > 0) {
+        out = HEX.slice(v % 16, v % 16 + 1) + out;
+        v = v / 16;
+    }
+    return padStart(out, width, "0");
+}
+
+# 32-bit FNV-1a of the bytes.
+pub func fnv1a(data: bytes): int {
+    var h = 2166136261;
+    for (i in 0..data.len()) {
+        h = ((h ^ data[i]) * 16777619) & 0xFFFFFFFF;
+    }
+    return h;
+}
+
+# `"<length in hex>-<FNV-1a in hex>"`, quoted as the header needs.
+pub func etag_of(data: bytes): string {
+    return "\"" + hex(data.len(), 1) + "-" + hex(fnv1a(data), 8) + "\"";
+}
+
+# Whether an If-None-Match header value names `tag`: `*`, or a
+# comma-separated list of tags, weak (`W/"..."`) or strong.
+pub func etag_matches(header: string, tag: string): bool {
+    for (raw in header.split(",")) {
+        var candidate = raw.trim();
+        if (candidate.startsWith("W/")) {
+            candidate = candidate.slice(2);
+        }
+        if (candidate == "*" or candidate == tag) {
+            return true;
+        }
+    }
+    return false;
+}

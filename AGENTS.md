@@ -1,7 +1,11 @@
 # AGENTS.md
 
-This repository is a GitHub template for building a command-line application
-in the Loup programming language. The program is built as a native executable.
+This repository is `httpd`, a small static file server written in the Loup
+programming language on the standard library's `net.http` server, part of
+the loup-cmd series of example applications. It is a `host.scripted`
+project: the program is the `.lpscr` script in `bin/`, run from source by
+`loup-bootstrap run` with the `fs` and `net` capabilities, and it imports
+`host.dual` modules from `lib/`. Nothing is compiled.
 
 ## Skills
 
@@ -19,89 +23,88 @@ mistakes. Load those only as needed.
 
 ```text
 .
-├── package.lppkg                # Loup manifest: name, version, toolchain, [build] entry, [test] pattern
-├── Makefile                     # run, check, test, build, ci, clean
-├── source/                      # all Loup code; modules import each other by path from here
-│   ├── main.loup                # entry point: func main() calls run(runtime.args())
-│   ├── appinfo.loup             # APP_NAME, APP_VERSION, APP_SUMMARY, exit statuses
-│   ├── cli/
-│   │   ├── args.loup            # struct Options, parse_args()
-│   │   ├── usage.loup           # usage(), version_line()
-│   │   └── app.loup             # run(), dispatch(): routes commands, maps errors to exit statuses
-│   └── commands/                # one module per command
-│       └── hello.loup           # sample command: run_hello()
-├── tests/                       # tests: <module>_test.loup files with func test_*(): void
-│   ├── app_test.loup
-│   ├── args_test.loup
-│   └── hello_test.loup
-├── specs/                       # feature specs: <feature>/requirements.md, design.md, tasks.md
-│   ├── README.md
-│   └── command-line-interface/
+├── package.lppkg                # manifest: name, version, toolchain, [build] entry (bin/httpd.lpscr), [test] pattern
+├── Makefile                     # run, check, test, e2e, ci, clean
+├── bin/
+│   └── httpd.lpscr              # entry script (host.scripted, executable): options, checks, serve(), access log
+├── lib/                         # host.dual modules
+│   ├── appinfo.loup             # APP_NAME, APP_VERSION, SERVER, exit statuses
+│   ├── args.loup                # struct Options, parse_args(), parse_port()
+│   ├── usage.loup               # usage(), version_line()
+│   ├── handler.loup             # handle(root, req), finish(), respond(root, req), error_response()
+│   ├── paths.loup               # path_segments(): decode and refuse, fs_path(), display_path()
+│   ├── mime.loup                # content_type()
+│   ├── listing.loup             # struct Entry, listing_page(), html_escape()
+│   ├── etag.loup                # fnv1a(), etag_of(), etag_matches()
+│   └── accesslog.loup           # log_line(), clf_time(), civil_from_days()
+├── tests/
+│   ├── *_test.lpscr             # unit tests: func test_*(): void (no sockets)
+│   ├── e2e.sh                   # end-to-end: server on a free port, curl, access log
+│   └── fixtures/site/           # the site the tests serve (a binary PNG, a dotfile, nested dirs)
+├── specs/httpd/                 # requirements.md, design.md, tasks.md
 ├── skills/loup-programmer/      # the Loup skill and its references
-├── .github/workflows/ci.yml     # installs Loup and runs `make ci`
-└── build/                       # build output (git-ignored)
+└── .github/workflows/ci.yml     # installs Loup and runs `make ci`
 ```
 
-## Build, run and test
+## Check, run and test
 
-Prerequisites: Loup 1.26.0 (`loup` and `loup-bootstrap` on `PATH`), `make`,
-and `clang` 17 or later for native builds.
+Prerequisites: Loup 1.26.0 (`loup-bootstrap` on `PATH`), `make`, `bash`,
+`curl` and `python3` (the end-to-end tests use it to find a free port).
 
 | Task | Command | Notes |
 |------|---------|-------|
-| Run from source | `make run ARGS="hello Ann --shout"` | `loup run source/main.loup -- ARGS` |
-| Type-check | `make check` | checks `source/main.loup` and every module it imports; tests are not checked |
-| Run all tests | `make test` | every `tests/*_test.loup` |
-| Run matching tests | `make test TEST_ARGS="--filter value"` | tests whose name contains `value` |
-| Run one test file | `make test TEST_ARGS="--file tests/args_test.loup"` | |
-| Build | `make build` | native binary at `build/myapp` |
-| Run the binary | `build/myapp --help` | |
-| Everything CI runs | `make ci` | check, test, build, then `build/myapp --version` |
-| Clean | `make clean` | removes `build/` and `.temp/` |
+| Serve a directory | `make run ARGS="-p 8000 tests/fixtures/site"` | `loup-bootstrap run --deny-all --allow-fs --allow-net bin/httpd.lpscr -- ARGS` |
+| Run directly | `./bin/httpd.lpscr -p 8000 DIR` | the shebang grants the capabilities |
+| Type-check | `make check` | `loup-bootstrap check FILE` for each `bin/*.lpscr` and its imports |
+| Unit tests | `make test` | each `tests/*_test.lpscr` in turn |
+| One test file | `make test TESTS=tests/handler_test.lpscr` | |
+| Matching tests | `make test TEST_ARGS="--filter etag"` | |
+| End-to-end tests | `make e2e` | `tests/e2e.sh`: starts the server, always kills it |
+| Everything CI runs | `make ci` | check, test, e2e, then `--version` |
+| Clean | `make clean` | removes `.temp/` |
 
-Run `make ci` before reporting a change as done. `loup run` and the native
-build do not support the same things, so a change can pass `make test` and
-still fail `make build`.
+Run `make ci` before reporting a change as done.
 
-Do not call `loup test` or `loup check` directly on Linux x86-64. There `loup`
-is the self-hosted driver: it refuses `check`, and its test runner cannot
-resolve this project's imports. The Makefile uses `loup-bootstrap` (Stage0) for
-both, and sets `LOUPPATH=source` for tests.
+Toolchain facts this project depends on (Loup 1.26.0, Linux x86-64):
+
+- The server needs Stage0 (`loup-bootstrap run`). The self-hosted `loup run`
+  has no network support (`unsupported method 'net'`). Stage0 grants `net`
+  only with `--allow-net`.
+- A script entry cannot be built (`E-BUILD-COMPILED`); there is no build
+  target. `loup-bootstrap check FILE` type-checks the script and its imports.
+- `Response.body` is a string, written as UTF-8 by `serializeResponse`, which
+  also writes `Content-Length` itself (a handler's own is dropped). Binary
+  files therefore get `501`, and `HEAD` answers carry `Content-Length: 0`.
+- `bytes.decode()` turns invalid UTF-8 into U+FFFD; `is_text()` relies on
+  that.
+- `loup-bootstrap test` with all files at once fails random tests with an
+  empty `RuntimeError` on a busy machine; the Makefile runs one file at a time.
 
 ## Making a change
 
-1. Write or update the spec in `specs/<feature>/` (see [specs/README.md](specs/README.md)).
-2. Change the code under `source/`.
-3. Add or update tests in `tests/`.
+1. Update the spec in `specs/httpd/` (see [specs/README.md](specs/README.md)).
+2. Change the code: request handling in `lib/`, start-up and logging in
+   `bin/httpd.lpscr`.
+3. Add or update unit tests in `tests/` (call `handle` or `respond` with
+   `parseRequest(...)`) and cases in `tests/e2e.sh`.
 4. Run `make ci`.
-5. Tick the finished tasks in `specs/<feature>/tasks.md`.
+5. Tick the finished tasks in `specs/httpd/tasks.md`.
 
-To add a command:
-
-1. Create `source/commands/<name>.loup` with `@mode(host.dual)` and
-   `pub func run_<name>(opts: Options): int`, returning an exit status from
-   `appinfo`.
-2. Add an arm for it to `dispatch` in `source/cli/app.loup`.
-3. Describe it in `usage()` in `source/cli/usage.loup`.
-4. Add any new options to `Options` and `parse_args` in `source/cli/args.loup`.
-5. Add `tests/<name>_test.loup`.
+Keep the handler a function from `Request` to `Response` with no other side
+effects than reading files; only `bin/httpd.lpscr` prints and listens.
 
 ## Conventions
 
-- Every source file is `@mode(host.dual)` with the `.loup` extension. Only
-  `source/main.loup` has a `main()`.
-- Modules import each other by path from `source/`:
-  `from cli.args import (Options);`. Tests import them the same way. Do not
-  use relative imports (`from .args import ...`): the self-hosted `loup run`
-  on Linux x86-64 fails on them.
-- Struct fields read from another module must be `pub`.
-- The native build supports less than `loup run` does. For example,
-  `list.is_empty()` fails native codegen (`E-CODEGEN-UNHANDLED-METHOD`); use
-  `len() == 0`.
-- Keep `APP_VERSION` in `source/appinfo.loup` equal to `version` in
-  `package.lppkg`.
-- The skill's examples use the `loup init` layout (`src/`, `tests/`, and
-  `from ..src.x import` in tests). This project uses `source/` and
-  `tests/` with plain imports; follow this file.
-- The skill documents toolchain 1.25.1; this template targets 1.26.0. When
+- `bin/httpd.lpscr` is `@mode(host.scripted)` with the shebang
+  `#!/usr/bin/env -S loup-bootstrap run --deny-all --allow-fs --allow-net`
+  and the executable bit. Grant no more capabilities than it uses.
+- `lib/*.loup` are `@mode(host.dual)`: declarations only, no `Any`.
+- Imports are relative: `from ..lib.handler import (...)` in `bin/` and
+  `tests/`, `from .paths import (...)` inside `lib/`.
+- Fields of a `Response` are changed inside `safe { ... }`.
+- Tests read fixtures by paths relative to the repository root
+  (`tests/fixtures/site`); run them from there (`make test` does).
+- Keep `APP_VERSION` in `lib/appinfo.loup`, `SERVER` and `version` in
+  `package.lppkg` in step.
+- The skill documents toolchain 1.25.1; this project targets 1.26.0. When
   they disagree, trust the toolchain's behaviour.

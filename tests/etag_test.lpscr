@@ -1,0 +1,25 @@
+@mode(host.scripted)
+
+from debug.assert import (expect, expectEq);
+from ..lib.etag import (fnv1a, etag_of, etag_matches);
+
+let DATA: bytes = readBytes("tests/fixtures/site/style.css");
+
+# The expected value was computed with an independent FNV-1a implementation.
+func test_fnv1a(): void {
+    expectEq(fnv1a(DATA), 0x3cd12149, "style.css");
+    expect(fnv1a(DATA) != fnv1a(readBytes("tests/fixtures/site/app.js")), "another file differs");
+}
+
+func test_etag_format(): void {
+    expectEq(etag_of(DATA), "\"22-3cd12149\"", "length and hash in hex");
+}
+
+func test_etag_matches(): void {
+    let tag = "\"22-3cd12149\"";
+    expect(etag_matches(tag, tag), "same");
+    expect(etag_matches("\"x\", " + tag, tag), "in a list");
+    expect(etag_matches("W/" + tag, tag), "weak");
+    expect(etag_matches("*", tag), "any");
+    expect(!etag_matches("\"other\"", tag), "different");
+}

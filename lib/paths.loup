@@ -1,0 +1,55 @@
+@mode(host.dual)
+
+# Maps a request path onto the served directory, refusing anything that
+# could leave it. The check works on the decoded path, before the file
+# system is touched: `%2e%2e/` is `../` too.
+
+from data.query import (percentDecode);
+
+# The segments of a request path, decoded, without empty and `.` segments;
+# or the status to answer with: 400 for a bad escape, a NUL or a backslash,
+# 403 for a `..` segment, 404 for a hidden (dot) segment.
+pub func path_segments(path: string): Result[list[string], int] {
+    var decoded = "";
+    try {
+        decoded = percentDecode(path);
+    } catch (Exception as e) {
+        return Err(400);
+    }
+    if (decoded.contains(str(char.of(0))) or decoded.contains("\\")) {
+        return Err(400);
+    }
+    var segments: list[string] = [];
+    for (segment in decoded.split("/")) {
+        if (segment == "" or segment == ".") {
+            continue;
+        }
+        if (segment == "..") {
+            return Err(403);
+        }
+        if (segment.startsWith(".")) {
+            return Err(404);
+        }
+        segments.push(segment);
+    }
+    return Ok(segments);
+}
+
+# The file-system path for `segments` under `root`.
+pub func fs_path(root: string, segments: list[string]): string {
+    var path = root;
+    for (segment in segments) {
+        path = if (path.endsWith("/")) { path + segment } else { path + "/" + segment };
+    }
+    return path;
+}
+
+# The URL path for display: `/` plus the segments, `/`-terminated for a
+# directory.
+pub func display_path(segments: list[string], is_dir: bool): string {
+    if (segments.len() == 0) {
+        return "/";
+    }
+    let path = "/" + segments.join("/");
+    return if (is_dir) { path + "/" } else { path };
+}

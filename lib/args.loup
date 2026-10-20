@@ -1,0 +1,138 @@
+@mode(host.dual)
+
+# Command-line parsing for httpd, by hand (Loup 1.26 has no CLI library).
+#
+# Grammar: httpd [OPTION]... [DIR]
+#   Value options take `-p 8000`, `-p8000`, `--port 8000` or `--port=8000`;
+#   short flags combine (`-qp8000`). Options may follow DIR; `--` ends the
+#   options.
+
+from core.string_utils import (isDigits);
+
+pub const DEFAULT_PORT: int = 8080;
+pub const DEFAULT_HOST: string = "127.0.0.1";
+
+pub struct Options {
+    pub help: bool;
+    pub version: bool;
+    pub port: int;
+    pub host: string;
+    pub quiet: bool;
+    pub root: string;
+}
+
+# A TCP port: a whole number from 1 to 65535.
+pub func parse_port(value: string): Option[int] {
+    if (!isDigits(value) or value.len() > 5) {
+        return None;
+    }
+    let n = value.toInt();
+    return if (n >= 1 and n <= 65535) { Some(n) } else { None };
+}
+
+pub func parse_args(argv: list[string]): Result[Options, string] {
+    var help = false;
+    var version = false;
+    var port = DEFAULT_PORT;
+    var host = DEFAULT_HOST;
+    var quiet = false;
+    var dirs: list[string] = [];
+    var only_operands = false;
+    # The rest of a short-option cluster, as an option of its own (`-qV` →
+    # `-q`, then `-V`).
+    var pending = "";
+
+    var i = 0;
+    while (i < argv.len() or pending.len() > 0) {
+        var arg = pending;
+        if (pending.len() > 0) {
+            pending = "";
+        } else {
+            arg = argv[i];
+            i += 1;
+        }
+        if (only_operands or arg == "-" or !arg.startsWith("-")) {
+            dirs.push(arg);
+            continue;
+        }
+        if (arg == "--") {
+            only_operands = true;
+            continue;
+        }
+
+        # The option's name and, for `--name=value` or `-pVALUE`, its value.
+        var name = arg;
+        var value: Option[string] = None;
+        if (arg.startsWith("--")) {
+            let eq = arg.index_of("=");
+            if (eq >= 0) {
+                name = arg.slice(0, eq);
+                value = Some(arg.slice(eq + 1));
+            }
+        } else if (arg.len() > 2) {
+            name = arg.slice(0, 2);
+            value = Some(arg.slice(2));
+        }
+
+        let takes_value = name == "-p" or name == "--port" or name == "-b" or name == "--bind";
+        if (takes_value and value.is_none()) {
+            if (i >= argv.len()) {
+                return Err(if (arg.startsWith("--")) { i"option '{$ name $}' requires an argument" } else { i"option requires an argument -- '{$ name.slice(1) $}'" });
+            }
+            value = Some(argv[i]);
+            i += 1;
+        }
+
+        if (name == "-p" or name == "--port") {
+            let text = value.unwrap_or("");
+            port = match parse_port(text) {
+                Some(n) => n,
+                None => { return Err(i"invalid port '{$ text $}'"); },
+            };
+        } else if (name == "-b" or name == "--bind") {
+            host = value.unwrap_or("");
+            if (host.len() == 0) {
+                return Err("empty bind address");
+            }
+        } else if (value.is_some() and arg.startsWith("--")) {
+            if (name == "--quiet" or name == "--help" or name == "--version") {
+                return Err(i"option '{$ name $}' doesn't allow an argument");
+            }
+            return Err(i"unrecognized option '{$ arg $}'");
+        } else if (value.is_some() and (name == "-q" or name == "-h" or name == "-V")) {
+            # A flag followed by more letters: take the flag, then the rest.
+            pending = "-" + value.unwrap();
+            if (name == "-q") {
+                quiet = true;
+            } else if (name == "-h") {
+                help = true;
+            } else {
+                version = true;
+            }
+        } else if (value.is_some()) {
+            return Err(i"invalid option -- '{$ arg.slice(1, 2) $}'");
+        } else if (name == "-q" or name == "--quiet") {
+            quiet = true;
+        } else if (name == "-h" or name == "--help") {
+            help = true;
+        } else if (name == "-V" or name == "--version") {
+            version = true;
+        } else if (name.startsWith("--")) {
+            return Err(i"unrecognized option '{$ arg $}'");
+        } else {
+            return Err(i"invalid option -- '{$ name.slice(1) $}'");
+        }
+    }
+
+    if (dirs.len() > 1) {
+        return Err(i"extra operand '{$ dirs[1] $}'");
+    }
+    return Ok(Options(
+        help = help,
+        version = version,
+        port = port,
+        host = host,
+        quiet = quiet,
+        root = if (dirs.len() == 1) { dirs[0] } else { "." },
+    ));
+}

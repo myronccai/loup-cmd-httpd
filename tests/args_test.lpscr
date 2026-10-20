@@ -1,0 +1,62 @@
+@mode(host.scripted)
+
+from debug.assert import (expect, expectEq);
+from ..lib.args import (Options, parse_args, parse_port);
+
+func ok(argv: list[string]): Options {
+    return parse_args(argv).unwrap();
+}
+
+func err(argv: list[string]): string {
+    return match parse_args(argv) {
+        Ok(o) => "parsed",
+        Err(msg) => msg,
+    };
+}
+
+func test_defaults(): void {
+    let o = ok([]);
+    expectEq(o.port, 8080, "port");
+    expectEq(o.host, "127.0.0.1", "host");
+    expectEq(o.root, ".", "root");
+    expect(!o.quiet and !o.help and !o.version, "flags");
+}
+
+func test_values(): void {
+    expectEq(ok(["-p", "8000"]).port, 8000, "separate");
+    expectEq(ok(["-p8001"]).port, 8001, "attached");
+    expectEq(ok(["--port=8002"]).port, 8002, "long with =");
+    expectEq(ok(["--port", "8003"]).port, 8003, "long separate");
+    expectEq(ok(["-b", "0.0.0.0"]).host, "0.0.0.0", "bind");
+    expectEq(ok(["--bind=::1"]).host, "::1", "bind long");
+}
+
+func test_dir_and_flags(): void {
+    let o = ok(["site", "-q"]);
+    expectEq(o.root, "site", "dir");
+    expect(o.quiet, "quiet after the dir");
+    let c = ok(["-qp9000"]);
+    expect(c.quiet, "cluster flag");
+    expectEq(c.port, 9000, "cluster value");
+    expectEq(ok(["--", "-odd"]).root, "-odd", "after --");
+    expect(ok(["-h"]).help and ok(["--version"]).version, "help and version");
+}
+
+func test_parse_port(): void {
+    expectEq(parse_port("1").unwrap_or(0), 1, "lowest");
+    expectEq(parse_port("65535").unwrap_or(0), 65535, "highest");
+    expect(parse_port("0").is_none(), "zero");
+    expect(parse_port("65536").is_none(), "too high");
+    expect(parse_port("80a").is_none(), "junk");
+}
+
+func test_usage_errors(): void {
+    expectEq(err(["-p", "0"]), "invalid port '0'", "port");
+    expectEq(err(["-p"]), "option requires an argument -- 'p'", "missing short value");
+    expectEq(err(["--port"]), "option '--port' requires an argument", "missing long value");
+    expectEq(err(["--quiet=yes"]), "option '--quiet' doesn't allow an argument", "flag with value");
+    expectEq(err(["--bogus"]), "unrecognized option '--bogus'", "long");
+    expectEq(err(["-x"]), "invalid option -- 'x'", "short");
+    expectEq(err(["-qx"]), "invalid option -- 'x'", "in a cluster");
+    expectEq(err(["a", "b"]), "extra operand 'b'", "two dirs");
+}

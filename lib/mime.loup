@@ -1,0 +1,37 @@
+@mode(host.dual)
+
+# Content types by file extension.
+
+from io.path import (extname);
+
+let TYPES: dict[string, string] = {
+    ".html": "text/html; charset=utf-8",
+    ".htm": "text/html; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".mjs": "text/javascript; charset=utf-8",
+    ".json": "application/json",
+    ".txt": "text/plain; charset=utf-8",
+    ".md": "text/markdown; charset=utf-8",
+    ".csv": "text/csv; charset=utf-8",
+    ".log": "text/plain; charset=utf-8",
+    ".xml": "application/xml",
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".ico": "image/x-icon",
+    ".pdf": "application/pdf",
+    ".wasm": "application/wasm",
+    ".woff2": "font/woff2",
+    ".zip": "application/zip",
+};
+
+pub const DEFAULT_TYPE: string = "application/octet-stream";
+
+# The content type for a file name, from its extension (case-insensitive).
+pub func content_type(name: string): string {
+    return TYPES.get(extname(name).toLowerCase()) ?? DEFAULT_TYPE;
+}

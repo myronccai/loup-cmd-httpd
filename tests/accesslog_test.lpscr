@@ -1,0 +1,31 @@
+@mode(host.scripted)
+
+from debug.assert import (expectEq);
+from net.http import (Request, Response, parseRequest);
+from ..lib.accesslog import (civil_from_days, clf_time, log_line);
+
+func test_civil_from_days(): void {
+    let epoch = civil_from_days(0);
+    expectEq(i"{$ epoch.year $}-{$ epoch.month $}-{$ epoch.day $}", "1970-1-1", "epoch");
+    let leap = civil_from_days(19782);
+    expectEq(i"{$ leap.year $}-{$ leap.month $}-{$ leap.day $}", "2024-2-29", "leap day");
+    let later = civil_from_days(20746);
+    expectEq(i"{$ later.year $}-{$ later.month $}-{$ later.day $}", "2026-10-20", "2026-10-20");
+}
+
+func test_clf_time(): void {
+    expectEq(clf_time(0), "01/Jan/1970:00:00:00 +0000", "epoch");
+    expectEq(clf_time(1792480092), "20/Oct/2026:07:08:12 +0000", "a Tuesday morning");
+}
+
+func test_log_line(): void {
+    let req = parseRequest("GET /docs/?q=1 HTTP/1.1\r\nUser-Agent: say \"hi\"\r\nReferer: http://x/\r\n\r\n");
+    let resp = Response(200, "text/html", "héllo");
+    expectEq(log_line(req, resp, 0), "- - - [01/Jan/1970:00:00:00 +0000] \"GET /docs/?q=1 HTTP/1.1\" 200 6 \"http://x/\" \"say \\\"hi\\\"\"", "line");
+}
+
+func test_log_line_without_body_or_headers(): void {
+    let req = parseRequest("HEAD / HTTP/1.0\r\n\r\n");
+    let resp = Response(304, "", "");
+    expectEq(log_line(req, resp, 86400), "- - - [02/Jan/1970:00:00:00 +0000] \"HEAD / HTTP/1.0\" 304 - \"-\" \"-\"", "dashes");
+}

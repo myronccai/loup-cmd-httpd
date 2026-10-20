@@ -1,0 +1,107 @@
+@mode(host.scripted)
+
+from debug.assert import (expect, expectEq);
+from net.http import (Request, Response, parseRequest);
+from ..lib.handler import (handle, respond, finish, error_response, is_text, content_response);
+
+let ROOT: string = "tests/fixtures/site";
+
+func get(target: string): Response {
+    return handle(ROOT, parseRequest("GET " + target + " HTTP/1.1\r\nHost: localhost\r\n\r\n"));
+}
+
+func request(raw: string): Response {
+    return handle(ROOT, parseRequest(raw));
+}
+
+func test_index_html(): void {
+    let resp = get("/");
+    expectEq(resp.status, 200, "status");
+    expectEq(resp.contentType, "text/html; charset=utf-8", "type");
+    expect(resp.body.startsWith("<!DOCTYPE html>"), "index.html");
+    expectEq(resp.headers.get("ETag") ?? "", "\"dc-df64d14c\"", "etag");
+}
+
+func test_files_and_types(): void {
+    expectEq(get("/style.css").contentType, "text/css; charset=utf-8", "css");
+    expectEq(get("/data.json").body, "{\"name\": \"site\", \"files\": 9}\n", "json body");
+    expectEq(get("/notes.txt").body, "Café notes: UTF-8 text.\n", "UTF-8 text");
+    expectEq(get("/logo.svg").contentType, "image/svg+xml", "svg");
+    expectEq(get("/docs/a%20b.txt").body, "spaces in the name\n", "encoded name");
+    expectEq(get("/notes.txt?download=1").status, 200, "query ignored");
+}
+
+func test_directory_redirect_keeps_query(): void {
+    let resp = get("/docs?sort=name");
+    expectEq(resp.status, 301, "status");
+    expectEq(resp.headers.get("Location") ?? "", "/docs/?sort=name", "location");
+}
+
+func test_directory_listing(): void {
+    let resp = get("/docs/");
+    expectEq(resp.status, 200, "status");
+    expectEq(resp.contentType, "text/html; charset=utf-8", "type");
+    expect(resp.body.contains("<title>Index of /docs/</title>"), "title");
+    expect(resp.body.contains("<li><a href=\"sub/\">sub/</a></li>"), "subdirectory");
+    expect(resp.body.contains("<li><a href=\"x%26y.txt\">x&amp;y.txt</a></li>"), "escaped name");
+    expect(!resp.body.contains(".hidden"), "hidden file left out");
+    expect(get("/docs/sub/").body.contains("deep.txt"), "nested listing");
+}
+
+func test_conditional_get(): void {
+    let tag = get("/style.css").headers.get("ETag") ?? "";
+    let resp = request("GET /style.css HTTP/1.1\r\nIf-None-Match: " + tag + "\r\n\r\n");
+    expectEq(resp.status, 304, "not modified");
+    expectEq(resp.body, "", "no body");
+    expectEq(resp.headers.get("ETag") ?? "", tag, "etag repeated");
+    expectEq(request("GET /style.css HTTP/1.1\r\nIf-None-Match: \"stale\"\r\n\r\n").status, 200, "stale tag");
+}
+
+func test_refusals(): void {
+    expectEq(get("/missing.txt").status, 404, "missing");
+    expectEq(get("/.secret").status, 404, "hidden");
+    expectEq(get("/../package.lppkg").status, 403, "traversal");
+    expectEq(get("/%2e%2e/%2e%2e/etc/passwd").status, 403, "encoded traversal");
+    expectEq(get("/a%zz").status, 400, "bad escape");
+    expectEq(get("/pixel.png").status, 501, "binary file");
+    expectEq(get("/missing.txt").body, "404 Not Found\n", "error body");
+}
+
+func test_methods(): void {
+    let resp = request("POST / HTTP/1.1\r\nContent-Length: 2\r\n\r\nhi");
+    expectEq(resp.status, 405, "POST");
+    expectEq(resp.headers.get("Allow") ?? "", "GET, HEAD", "allow");
+    expectEq(request("DELETE /notes.txt HTTP/1.1\r\n\r\n").status, 405, "DELETE");
+}
+
+func test_respond_adds_server_and_strips_head_bodies(): void {
+    let got = respond(ROOT, parseRequest("GET /notes.txt HTTP/1.1\r\n\r\n"));
+    expectEq(got.headers.get("Server") ?? "", "loup-cmd-httpd/0.1.0", "server");
+    let head = respond(ROOT, parseRequest("HEAD /notes.txt HTTP/1.1\r\n\r\n"));
+    expectEq(head.status, 200, "HEAD status");
+    expectEq(head.body, "", "HEAD body");
+    expectEq(head.headers.get("ETag") ?? "", got.headers.get("ETag") ?? "-", "HEAD keeps the headers");
+    expectEq(respond(ROOT, parseRequest("GET /nope HTTP/1.1\r\n\r\n")).headers.get("Server") ?? "", "loup-cmd-httpd/0.1.0", "errors too");
+}
+
+func test_is_text(): void {
+    let png = readBytes("tests/fixtures/site/pixel.png");
+    expect(!is_text(png, png.decode()), "PNG is binary");
+    let txt = readBytes("tests/fixtures/site/notes.txt");
+    expect(is_text(txt, txt.decode()), "UTF-8 is text");
+}
+
+func test_error_response(): void {
+    let resp = error_response(405);
+    expectEq(resp.body, "405 Method Not Allowed\n", "body");
+    expectEq(resp.contentType, "text/plain; charset=utf-8", "type");
+}
+
+func test_a_failing_handler_gives_500(): void {
+    let resp = finish(parseRequest("GET / HTTP/1.1\r\n\r\n"), func(r: Request): Response {
+        throw ValueError("boom");
+    });
+    expectEq(resp.status, 500, "status");
+    expectEq(resp.body, "500 Internal Server Error\n", "body");
+    expectEq(resp.headers.get("Server") ?? "", "loup-cmd-httpd/0.1.0", "server");
+}

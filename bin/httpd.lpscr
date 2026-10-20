@@ -1,0 +1,57 @@
+#!/usr/bin/env -S loup-bootstrap run --deny-all --allow-fs --allow-net
+@mode(host.scripted)
+
+# httpd: serve the files under a directory over HTTP.
+#
+# This script is the program's top level: options, the start-up checks, and
+# net.http's serve() with a handler that answers each request (lib/handler)
+# and writes the access log line. It needs the `fs` and `net` capabilities
+# and nothing else, which the shebang line grants. On Linux x86-64 it runs
+# under Stage0 (`loup-bootstrap run`): the self-hosted `loup run` there has
+# no network support.
+
+from net.http import (Request, Response, serve);
+from io.fs import (isDir);
+from system.time import (realtimeNs);
+from ..lib.appinfo import (APP_NAME, EXIT_OK, EXIT_FAILURE, EXIT_USAGE);
+from ..lib.args import (Options, parse_args);
+from ..lib.usage import (usage, version_line);
+from ..lib.handler import (respond);
+from ..lib.accesslog import (log_line);
+
+let parsed = parse_args(args());
+if (parsed.is_err()) {
+    printErr(i"{$ APP_NAME $}: {$ parsed.unwrap_err() $}");
+    printErr(i"Try '{$ APP_NAME $} --help' for more information.");
+    exit(EXIT_USAGE);
+}
+let opts: Options = parsed.unwrap();
+if (opts.help) {
+    println(usage());
+    exit(EXIT_OK);
+}
+if (opts.version) {
+    println(version_line());
+    exit(EXIT_OK);
+}
+if (!isDir(opts.root)) {
+    printErr(i"{$ APP_NAME $}: {$ opts.root $}: not a directory");
+    exit(EXIT_FAILURE);
+}
+
+let root = opts.root;
+let quiet = opts.quiet;
+printErr(i"{$ APP_NAME $}: serving {$ root $} on http://{$ opts.host $}:{$ opts.port $}/");
+try {
+    # Serves one connection at a time, forever.
+    serve(opts.host, opts.port, func(req: Request): Response {
+        let resp = respond(root, req);
+        if (!quiet) {
+            println(log_line(req, resp, realtimeNs() / 1000000000));
+        }
+        return resp;
+    });
+} catch (IoError as e) {
+    printErr(i"{$ APP_NAME $}: cannot listen on {$ opts.host $}:{$ opts.port $}: {$ e.message $}");
+    exit(EXIT_FAILURE);
+}

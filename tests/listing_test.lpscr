@@ -1,0 +1,48 @@
+@mode(host.scripted)
+
+from debug.assert import (expectEq);
+from ..lib.listing import (Entry, html_escape, sorted_entries, listing_page);
+
+func test_html_escape(): void {
+    expectEq(html_escape("<a href=\"x\">Tom & Jerry's</a>"), "&lt;a href=&quot;x&quot;&gt;Tom &amp; Jerry&#39;s&lt;/a&gt;", "all five");
+}
+
+func test_directories_first_then_by_name(): void {
+    let sorted = sorted_entries([
+        Entry(name = "b.txt", is_dir = false),
+        Entry(name = "z", is_dir = true),
+        Entry(name = "a.txt", is_dir = false),
+        Entry(name = "c", is_dir = true),
+    ]);
+    var names: list[string] = [];
+    for (e in sorted) {
+        names.push(e.name);
+    }
+    expectEq(names.join(" "), "c z a.txt b.txt", "order");
+}
+
+func test_listing_page(): void {
+    let want = [
+        "<!DOCTYPE html>",
+        "<html>",
+        "<head><meta charset=\"utf-8\"><title>Index of /docs/</title></head>",
+        "<body>",
+        "<h1>Index of /docs/</h1>",
+        "<ul>",
+        "<li><a href=\"../\">../</a></li>",
+        "<li><a href=\"sub/\">sub/</a></li>",
+        "<li><a href=\"a%20b.txt\">a b.txt</a></li>",
+        "<li><a href=\"x%26y.txt\">x&amp;y.txt</a></li>",
+        "</ul>",
+        "</body>",
+        "</html>",
+        "",
+    ].join("\n");
+    let entries = [Entry(name = "x&y.txt", is_dir = false), Entry(name = "a b.txt", is_dir = false), Entry(name = "sub", is_dir = true)];
+    expectEq(listing_page("/docs/", entries), want, "page");
+}
+
+func test_root_has_no_parent_link(): void {
+    let page = listing_page("/", [Entry(name = "a", is_dir = false)]);
+    expectEq(page.contains("../"), false, "no ../ at the root");
+}

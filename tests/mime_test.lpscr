@@ -1,0 +1,23 @@
+@mode(host.scripted)
+
+from debug.assert import (expectEq);
+from ..lib.mime import (content_type, DEFAULT_TYPE);
+
+func test_text_types_carry_a_charset(): void {
+    expectEq(content_type("index.html"), "text/html; charset=utf-8", "html");
+    expectEq(content_type("a/style.css"), "text/css; charset=utf-8", "css");
+    expectEq(content_type("app.js"), "text/javascript; charset=utf-8", "js");
+    expectEq(content_type("notes.txt"), "text/plain; charset=utf-8", "txt");
+}
+
+func test_other_types(): void {
+    expectEq(content_type("data.json"), "application/json", "json");
+    expectEq(content_type("logo.svg"), "image/svg+xml", "svg");
+    expectEq(content_type("pixel.png"), "image/png", "png");
+}
+
+func test_case_and_unknown(): void {
+    expectEq(content_type("PAGE.HTM"), "text/html; charset=utf-8", "upper case");
+    expectEq(content_type("archive.tar.xz"), DEFAULT_TYPE, "unknown");
+    expectEq(content_type("Makefile"), DEFAULT_TYPE, "no extension");
+}

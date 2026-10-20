@@ -1,0 +1,30 @@
+@mode(host.dual)
+
+from .appinfo import (APP_NAME, APP_VERSION);
+
+pub func usage(): string {
+    let lines = [
+        i"usage: {$ APP_NAME $} [OPTION]... [DIR]",
+        "",
+        "Serve the files under DIR (default: the current directory) over HTTP.",
+        "GET and HEAD only; one connection at a time. The access log, in",
+        "Combined Log Format, goes to standard output.",
+        "",
+        "  -p, --port PORT       port to listen on (default 8080)",
+        "  -b, --bind ADDRESS    address to listen on (default 127.0.0.1)",
+        "  -q, --quiet           do not write the access log",
+        "  -h, --help            display this help and exit",
+        "  -V, --version         output version information and exit",
+        "",
+        "Run it with the network capability granted, options after `--`:",
+        i"  loup-bootstrap run --allow-net bin/{$ APP_NAME $}.lpscr -- -p 8000 site/",
+        "",
+        "Exit status: 1 if DIR is not a directory or the server cannot listen,",
+        "2 for a usage error. Otherwise it serves until it is stopped.",
+    ];
+    return lines.join("\n");
+}
+
+pub func version_line(): string {
+    return i"{$ APP_NAME $} (loup-cmd-{$ APP_NAME $}) {$ APP_VERSION $}";
+}

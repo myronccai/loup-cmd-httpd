@@ -1,0 +1,52 @@
+@mode(host.scripted)
+
+from debug.assert import (expect, expectEq);
+from ..lib.paths import (path_segments, fs_path, display_path);
+
+func segments(path: string): string {
+    return match path_segments(path) {
+        Ok(found) => found.join("|"),
+        Err(code) => str(code),
+    };
+}
+
+func test_plain_paths(): void {
+    expectEq(segments("/"), "", "root");
+    expectEq(segments("/docs/guide.md"), "docs|guide.md", "nested");
+    expectEq(segments("//docs/./guide.md/"), "docs|guide.md", "empty and dot segments");
+}
+
+func test_percent_decoding(): void {
+    expectEq(segments("/docs/a%20b.txt"), "docs|a b.txt", "space");
+    expectEq(segments("/caf%C3%A9.txt"), "café.txt", "UTF-8");
+    expectEq(segments("/a+b"), "a+b", "plus stays a plus");
+    expectEq(segments("/docs%2Fguide.md"), "docs|guide.md", "encoded slash");
+}
+
+func test_traversal_is_refused(): void {
+    expectEq(segments("/../etc/passwd"), "403", "dot dot");
+    expectEq(segments("/docs/../../x"), "403", "deeper");
+    expectEq(segments("/%2e%2e/x"), "403", "encoded dots");
+    expectEq(segments("/docs/%2E%2E%2Fx"), "403", "encoded dots and slash");
+}
+
+func test_hidden_and_bad_paths(): void {
+    expectEq(segments("/.git/config"), "404", "hidden directory");
+    expectEq(segments("/docs/.hidden"), "404", "hidden file");
+    expectEq(segments("/a%zz"), "400", "bad escape");
+    expectEq(segments("/a%2"), "400", "truncated escape");
+    expectEq(segments("/a%00b"), "400", "NUL");
+    expectEq(segments("/a%5C..%5Cb"), "400", "backslash");
+}
+
+func test_fs_path(): void {
+    expectEq(fs_path("site", ["docs", "a b.txt"]), "site/docs/a b.txt", "joined");
+    expectEq(fs_path("site/", ["x"]), "site/x", "root with slash");
+    expectEq(fs_path("site", []), "site", "root itself");
+}
+
+func test_display_path(): void {
+    expectEq(display_path([], true), "/", "root");
+    expectEq(display_path(["docs", "sub"], true), "/docs/sub/", "directory");
+    expectEq(display_path(["a.txt"], false), "/a.txt", "file");
+}
