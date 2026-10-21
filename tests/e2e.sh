@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # End-to-end tests: start the server in the background on a free port over a
 # copy of tests/fixtures/site in a temporary directory, check its answers
-# with curl, compare the access log, and always stop the server.
+# with curl, compare the access log, and always stop the server. The free
+# port and the wait for the server come from tests/netcheck.lpscr.
 #
 # usage: tests/e2e.sh [LOUP_BOOTSTRAP]     (run from the repository root)
 
@@ -9,6 +10,7 @@ set -u
 LOUP=${1:-loup-bootstrap}
 GRANTS=(run --deny-all --allow-fs --allow-net)
 SCRIPT=bin/httpd.lpscr
+NETCHECK=(run --deny-all --allow-net tests/netcheck.lpscr --)
 TMP=$(mktemp -d)
 SERVER_PID=""
 pass=0
@@ -25,7 +27,7 @@ trap 'stop_server; rm -rf "$TMP"' EXIT
 trap 'exit 130' INT TERM
 
 free_port() {
-    python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()'
+    "$LOUP" "${NETCHECK[@]}" free-port < /dev/null
 }
 
 # same NAME EXPECTED ACTUAL
@@ -60,6 +62,10 @@ cli "unknown option" 2 "" "httpd: unrecognized option '--bogus'
 $HINT" --bogus
 cli "two dirs"       2 "" "httpd: extra operand 'b'
 $HINT" a b
+cli "bad bind address" 2 "" "httpd: invalid bind address 'bad host'
+$HINT" -b "bad host"
+cli "bad IPv4 address" 2 "" "httpd: invalid bind address '999.1.1.1'
+$HINT" --bind=999.1.1.1
 cli "not a directory" 1 "" "httpd: tests/e2e.sh: not a directory" tests/e2e.sh
 "$LOUP" "${GRANTS[@]}" "$SCRIPT" -- --help > "$TMP/out" 2>&1
 same "help" "usage: httpd [OPTION]... [DIR]" "$(head -1 "$TMP/out")"
@@ -80,16 +86,13 @@ URL="http://127.0.0.1:$PORT"
 "$LOUP" "${GRANTS[@]}" "$SCRIPT" -- -p "$PORT" "$TMP/site" > "$TMP/access.log" 2> "$TMP/server.err" &
 SERVER_PID=$!
 
+# netcheck polls for up to 20 seconds; its requests say User-Agent `probe`.
 ready=no
-for _ in $(seq 1 100); do
-    if curl -s -o /dev/null -A probe "$URL/"; then
-        ready=yes
-        break
-    fi
-    kill -0 "$SERVER_PID" 2> /dev/null || break
-    sleep 0.2
-done
+if "$LOUP" "${NETCHECK[@]}" wait "$PORT" < /dev/null > "$TMP/probe" 2> "$TMP/probe.err"; then
+    ready=yes
+fi
 same "server started" yes "$ready"
+same "first answer" "HTTP/1.1 200 OK" "$(cat "$TMP/probe")"
 same "banner" "httpd: serving $TMP/site on $URL/" "$(cat "$TMP/server.err")"
 if [ "$ready" != yes ]; then
     echo "e2e: $pass passed, $((fail + 1)) failed (server did not start)"

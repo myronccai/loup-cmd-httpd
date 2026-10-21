@@ -1,16 +1,17 @@
 @mode(host.scripted)
 
 # Unit tests for httpd's command-line parsing (lib/args.loup): defaults,
-# value options in each spelling, flags and DIR, port validation, and the
-# usage error messages.
+# value options in each spelling, flags and DIR, splitting an option word,
+# port and bind address validation, and the usage error messages.
 #
 # Runtime: host.scripted, run by the test runner: `make test` interprets this
-# file with Stage0 (`loup-bootstrap test --file tests/args_test.lpscr`, one
-# file at a time), one test per `func test_*()`. It imports lib/ by relative
-# path (`from ..lib.args`) and opens no socket; it is not part of the program.
+# file with Stage0, one file and one test at a time
+# (`loup-bootstrap test --no-parallel --file tests/args_test.lpscr`), one test
+# per `func test_*()`. It imports lib/ by relative path (`from ..lib.args`)
+# and opens no socket; it is not part of the program.
 
 from debug.assert import (expect, expectEq);
-from ..lib.args import (Options, parse_args, parse_port);
+from ..lib.args import (Options, parse_args, parse_port, is_bind_address, split_option);
 
 func ok(argv: list[string]): Options {
     return parse_args(argv).unwrap();
@@ -59,6 +60,30 @@ func test_parse_port(): void {
     expect(parse_port("80a").is_none(), "junk");
 }
 
+func test_split_option(): void {
+    let (long_name, long_value) = split_option("--port=8000");
+    expectEq(long_name + " " + (long_value ?? "-"), "--port 8000", "long with =");
+    let (flag_name, flag_value) = split_option("-p8000");
+    expectEq(flag_name + " " + (flag_value ?? "-"), "-p 8000", "short with value");
+    let (bare_name, nothing) = split_option("--quiet");
+    expectEq(bare_name, "--quiet", "long alone");
+    expect(nothing.is_none(), "no value attached");
+    let (empty_name, empty_value) = split_option("--bind=");
+    expectEq(empty_name + " [" + (empty_value ?? "-") + "]", "--bind []", "empty value");
+}
+
+func test_bind_addresses(): void {
+    expect(is_bind_address("127.0.0.1"), "IPv4");
+    expect(is_bind_address("0.0.0.0"), "every interface");
+    expect(is_bind_address("::1"), "IPv6");
+    expect(is_bind_address("[::1]"), "IPv6 in brackets");
+    expect(is_bind_address("localhost"), "host name");
+    expect(!is_bind_address("999.1.1.1"), "octet out of range");
+    expect(!is_bind_address("1.2.3"), "three octets");
+    expect(!is_bind_address("bad host"), "space");
+    expectEq(ok(["-b", "localhost"]).host, "localhost", "accepted by parse_args");
+}
+
 func test_usage_errors(): void {
     expectEq(err(["-p", "0"]), "invalid port '0'", "port");
     expectEq(err(["-p"]), "option requires an argument -- 'p'", "missing short value");
@@ -68,4 +93,8 @@ func test_usage_errors(): void {
     expectEq(err(["-x"]), "invalid option -- 'x'", "short");
     expectEq(err(["-qx"]), "invalid option -- 'x'", "in a cluster");
     expectEq(err(["a", "b"]), "extra operand 'b'", "two dirs");
+    expectEq(err(["-b", "bad host"]), "invalid bind address 'bad host'", "bad bind address");
+    expectEq(err(["--bind=999.1.1.1"]), "invalid bind address '999.1.1.1'", "octet out of range");
+    expectEq(err(["--bind="]), "empty bind address", "empty bind address");
+    expectEq(err(["-qVx"]), "invalid option -- 'x'", "end of a longer cluster");
 }

@@ -1,0 +1,95 @@
+#!/usr/bin/env -S loup-bootstrap run --deny-all --allow-net
+@mode(host.scripted)
+
+# netcheck: the network helper of tests/e2e.sh, written in Loup in place of
+# python3 and a curl polling loop.
+#
+#   netcheck free-port          print a TCP port that nothing listens on
+#   netcheck wait PORT [PATH]   wait until the server on 127.0.0.1:PORT
+#                               answers a GET for PATH (default /), then
+#                               print the response's status line
+#
+# Runtime: host.scripted. A development script that tests/e2e.sh runs with
+# Stage0, `loup-bootstrap run --deny-all --allow-net tests/netcheck.lpscr --
+# ARGS`: net.tcp needs Stage0 and the `net` grant. It is not part of the
+# program; `make check` type-checks it along with bin/httpd.lpscr.
+#
+# Structure: free_port() binds port 0 and reads back the port the system
+# chose. request() is a minimal HTTP/1.1 client over net.tcp. wait_for()
+# polls request() with core.waiting.waitForItSync until the server answers
+# or 20 seconds pass. Exit status: 0 on success, 1 when the wait times out,
+# 2 for a usage error.
+
+from net.tcp import (listen, connect);
+from io.streams import (ByteWriter);
+from core.waiting import (waitForItSync, WaitContext);
+from core.time import (Duration);
+from core.string_utils import (isDigits);
+
+let HOST: string = "127.0.0.1";
+let USAGE: string = "usage: netcheck free-port | netcheck wait PORT [PATH]";
+
+# A port that was free a moment ago. Another process could take it before
+# the server binds it; the tests accept that small race.
+func free_port(): int {
+    let listener = listen(HOST, 0);
+    let port = listener.addr().1;
+    listener.close();
+    return port;
+}
+
+# Sends one GET for `path` and returns the status line of the answer. The
+# User-Agent is `probe`, which tests/e2e.sh leaves out of the access log it
+# compares. Throws IoError while nothing accepts connections on the port.
+func request(port: int, path: string): string {
+    let sock = connect(HOST, port);
+    let out = ByteWriter();
+    out.writeString("GET " + path + " HTTP/1.1\r\nHost: " + HOST + ":" + str(port) + "\r\n");
+    out.writeString("User-Agent: probe\r\nConnection: close\r\n\r\n");
+    sock.write(out.toBytes());
+    # Read to the end, not just the status line: the server writes the whole
+    # response before it closes the connection.
+    let answer = ByteWriter();
+    var chunk = sock.read(4096);
+    while (chunk.len() > 0) {
+        answer.writeBytes(chunk);
+        chunk = sock.read(4096);
+    }
+    sock.close();
+    let text = answer.toBytes().decode();
+    let end = text.index_of("\r\n");
+    return if (end >= 0) { text.slice(0, end) } else { text };
+}
+
+# Polls every 100 ms until request() gets an answer. The looper keeps the
+# answer in `status`, a local of wait_for() that it assigns through
+# `nonlocal`. A refused connection is an IoError: not ready yet.
+func wait_for(port: int, path: string): string {
+    var status = "";
+    waitForItSync(func(edits ctx: WaitContext): bool {
+        nonlocal status;
+        try {
+            status = request(port, path);
+            return true;
+        } catch (IoError) {
+            return false;
+        }
+    }, i"an HTTP answer on {$ HOST $}:{$ port $}", Duration.ofSeconds(0), Duration.ofMillis(100), Duration.ofSeconds(20));
+    return status;
+}
+
+let words = args();
+if (words.len() == 1 and words[0] == "free-port") {
+    println(free_port());
+} else if (words.len() >= 2 and words.len() <= 3 and words[0] == "wait" and isDigits(words[1])) {
+    let path = if (words.len() == 3) { words[2] } else { "/" };
+    try {
+        println(wait_for(words[1].toInt(), path));
+    } catch (TimeoutError as e) {
+        printErr("netcheck: " + e.message);
+        exit(1);
+    }
+} else {
+    printErr(USAGE);
+    exit(2);
+}

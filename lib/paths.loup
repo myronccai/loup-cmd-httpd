@@ -18,24 +18,24 @@ pub func path_segments(path: string): Result[list[string], int] {
     var decoded = "";
     try {
         decoded = percentDecode(path);
-    } catch (Exception as e) {
+    } catch {
         return Err(400);
     }
     if (decoded.contains(str(char.of(0))) or decoded.contains("\\")) {
         return Err(400);
     }
+    # Each segment is skipped, refused or kept. Arms are tried in order, so
+    # `..` is refused as traversal before the guard that hides every other
+    # name starting with a dot.
     var segments: list[string] = [];
     for (segment in decoded.split("/")) {
-        if (segment == "" or segment == ".") {
-            continue;
+        match segment {
+            "" => {},
+            "." => {},
+            ".." => { return Err(403); },
+            hidden if (hidden.startsWith(".")) => { return Err(404); },
+            name => { segments.push(name); },
         }
-        if (segment == "..") {
-            return Err(403);
-        }
-        if (segment.startsWith(".")) {
-            return Err(404);
-        }
-        segments.push(segment);
     }
     return Ok(segments);
 }

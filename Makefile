@@ -10,7 +10,7 @@
 APP            ?= httpd
 LOUP_BOOTSTRAP ?= loup-bootstrap
 RUN            ?= $(LOUP_BOOTSTRAP) run --deny-all --allow-fs --allow-net
-SCRIPTS        := $(wildcard bin/*.lpscr)
+SCRIPTS        := $(wildcard bin/*.lpscr) tests/netcheck.lpscr
 TESTS          ?= $(wildcard tests/*_test.lpscr)
 ARGS           ?=
 TEST_ARGS      ?=
@@ -24,20 +24,23 @@ all: ci
 run:
 	$(RUN) bin/$(APP).lpscr -- $(ARGS)
 
-# Type-check each entry script and every lib/ module it imports.
+# Type-check each entry script and every lib/ module it imports, and the
+# end-to-end tests' network helper.
 check:
 	@for script in $(SCRIPTS); do \
 		echo "check $$script"; \
 		$(LOUP_BOOTSTRAP) check --no-color $$script || exit 1; \
 	done
 
-# Unit tests (tests/*_test.lpscr), one file at a time: run all at once, the
-# 1.26.0 runner fails random tests with an empty RuntimeError on a busy
-# machine. They call the handler directly; no socket is opened.
+# Unit tests (tests/*_test.lpscr), one file at a time and one test at a
+# time (--no-parallel): in parallel, the 1.26.0 runner fails random tests
+# with an empty RuntimeError on a busy machine, and `--file` alone still
+# runs a file's tests in parallel threads. They call the handler directly;
+# no socket is opened.
 # Narrow the run: `make test TESTS=tests/handler_test.lpscr TEST_ARGS="--filter etag"`.
 test:
 	@status=0; for t in $(TESTS); do \
-		$(LOUP_BOOTSTRAP) test --no-color --file $$t $(TEST_ARGS) || status=1; \
+		$(LOUP_BOOTSTRAP) test --no-color --no-parallel --file $$t $(TEST_ARGS) || status=1; \
 	done; exit $$status
 
 # End-to-end tests: start the server on a free port over a copy of

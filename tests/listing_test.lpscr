@@ -1,20 +1,17 @@
 @mode(host.scripted)
 
-# Unit tests for httpd's directory listings (lib/listing.loup): HTML
-# escaping, entry order, and the page itself.
+# Unit tests for httpd's directory listings (lib/listing.loup): entry
+# order, each entry's link and text, the page itself, and the escaping of
+# names and paths.
 #
 # Runtime: host.scripted, run by the test runner: `make test` interprets this
-# file with Stage0 (`loup-bootstrap test --file tests/listing_test.lpscr`, one
-# file at a time), one test per `func test_*()`. It imports lib/ by relative
-# path (`from ..lib.listing`) and opens no socket; it is not part of the
-# program.
+# file with Stage0, one file and one test at a time
+# (`loup-bootstrap test --no-parallel --file tests/listing_test.lpscr`), one
+# test per `func test_*()`. It imports lib/ by relative path
+# (`from ..lib.listing`) and opens no socket; it is not part of the program.
 
-from debug.assert import (expectEq);
-from ..lib.listing import (Entry, html_escape, sorted_entries, listing_page);
-
-func test_html_escape(): void {
-    expectEq(html_escape("<a href=\"x\">Tom & Jerry's</a>"), "&lt;a href=&quot;x&quot;&gt;Tom &amp; Jerry&#39;s&lt;/a&gt;", "all five");
-}
+from debug.assert import (expect, expectEq);
+from ..lib.listing import (Entry, sorted_entries, href, label, listing_page);
 
 func test_directories_first_then_by_name(): void {
     let sorted = sorted_entries([
@@ -28,6 +25,15 @@ func test_directories_first_then_by_name(): void {
         names.push(e.name);
     }
     expectEq(names.join(" "), "c z a.txt b.txt", "order");
+}
+
+func test_links_and_labels(): void {
+    let dir = Entry(name = "my docs", is_dir = true);
+    expectEq(href(dir), "my%20docs/", "directory link");
+    expectEq(label(dir), "my docs/", "directory text");
+    let file = Entry(name = "a&b?.txt", is_dir = false);
+    expectEq(href(file), "a%26b%3F.txt", "file link");
+    expectEq(label(file), "a&b?.txt", "file text, escaped by the page");
 }
 
 func test_listing_page(): void {
@@ -49,6 +55,22 @@ func test_listing_page(): void {
     ].join("\n");
     let entries = [Entry(name = "x&y.txt", is_dir = false), Entry(name = "a b.txt", is_dir = false), Entry(name = "sub", is_dir = true)];
     expectEq(listing_page("/docs/", entries), want, "page");
+}
+
+# The escape filter encodes all five HTML specials; `'` comes out as
+# `&#x27;`.
+func test_names_and_path_are_escaped(): void {
+    let page = listing_page("/<x>/", [Entry(name = "Tom & \"Jerry's\" <b>", is_dir = false)]);
+    expect(page.contains("<title>Index of /&lt;x&gt;/</title>"), "title");
+    expect(page.contains("<h1>Index of /&lt;x&gt;/</h1>"), "heading");
+    expect(page.contains(">Tom &amp; &quot;Jerry&#x27;s&quot; &lt;b&gt;</a></li>"), "entry text");
+}
+
+func test_empty_directory(): void {
+    let none: list[Entry] = [];
+    let page = listing_page("/", none);
+    expect(page.contains("<ul>\n</ul>\n"), "an empty list, no blank lines");
+    expect(page.endsWith("</html>\n"), "ends with a newline");
 }
 
 func test_root_has_no_parent_link(): void {

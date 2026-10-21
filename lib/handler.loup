@@ -7,7 +7,8 @@
 # Runtime: host.dual, but only ever interpreted here, by Stage0:
 # bin/httpd.lpscr imports it under `loup-bootstrap run` and
 # tests/handler_test.lpscr under `loup-bootstrap test`. Nothing in this
-# project compiles it.
+# project compiles it, and it needs Stage0: `not in` and escapes inside an
+# interpolated string work only there in Loup 1.26.0.
 #
 # Structure: handle() routes one request: the method (405 unless GET or
 # HEAD), the path (lib/paths answers 400, 403 or 404 before the file system
@@ -30,7 +31,7 @@ let REPLACEMENT: string = str(char.of(65533));
 
 # A plain-text error response, such as `404 Not Found`.
 pub func error_response(code: int): Response {
-    return Response(code, "text/plain; charset=utf-8", str(code) + " " + statusReason(code) + "\n");
+    return Response(code, "text/plain; charset=utf-8", i"{$ code $} {$ statusReason(code) $}\n");
 }
 
 # Whether `raw` decoded to `text` unchanged, that is, it is UTF-8 text. (A
@@ -66,7 +67,7 @@ func file_response(req: Request, path: string): Response {
     try {
         let raw = readBytes(path);
         return content_response(req, path, raw);
-    } catch (IoError as e) {
+    } catch (IoError) {
         return error_response(403);
     }
 }
@@ -81,7 +82,7 @@ func listing_response(url_path: string, dir: string): Response {
                 entries.push(Entry(name = name, is_dir = isDir(fs_path(dir, [name]))));
             }
         }
-    } catch (IoError as e) {
+    } catch (IoError) {
         return error_response(403);
     }
     return Response(200, "text/html; charset=utf-8", listing_page(url_path, entries));
@@ -89,7 +90,7 @@ func listing_response(url_path: string, dir: string): Response {
 
 # Answers one request for the files under `root`.
 pub func handle(root: string, req: Request): Response {
-    if (req.method != "GET" and req.method != "HEAD") {
+    if (req.method not in ["GET", "HEAD"]) {
         let refused = error_response(405);
         refused.headers.set("Allow", "GET, HEAD");
         return refused;
@@ -125,7 +126,7 @@ pub func finish(req: Request, answer: fn(Request): Response): Response {
     var resp = error_response(500);
     try {
         resp = answer(req);
-    } catch (Exception as e) {
+    } catch {
         resp = error_response(500);
     }
     resp.headers.set("Server", SERVER);

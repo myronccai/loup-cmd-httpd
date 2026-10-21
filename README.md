@@ -16,7 +16,7 @@ capability granted.
 
 - [Loup Lite](https://github.com/code-craft-ai-company/loup-releases) 1.26.0
   or later (`loup-bootstrap` on `PATH`); see [Installing Loup Lite](#installing-loup-lite).
-- `make`, `bash`, `curl` and `python3` for the tests. Nothing is built.
+- `make`, `bash` and `curl` for the tests. Nothing is built.
 
 ## Installing Loup Lite
 
@@ -157,7 +157,7 @@ The log is in Combined Log Format, so
 | Option | Meaning |
 |---|---|
 | `-p`, `--port PORT` | port to listen on (default 8080) |
-| `-b`, `--bind ADDRESS` | address to listen on (default `127.0.0.1`; `0.0.0.0` for every interface) |
+| `-b`, `--bind ADDRESS` | address to listen on: an IPv4 or IPv6 address or a host name (default `127.0.0.1`; `0.0.0.0` for every interface); a malformed one is a usage error |
 | `-q`, `--quiet` | no access log |
 | `-h`, `--help` / `-V`, `--version` | help text / `httpd (loup-cmd-httpd) 0.1.0` |
 
@@ -184,7 +184,8 @@ form takes them directly only if they are short (`-p 8000`), so write
 | the handler fails | `500`, and the server keeps running |
 
 Exit status: `1` if DIR is not a directory or the server cannot listen, `2`
-for a usage error. Otherwise it serves until stopped (Ctrl-C).
+for a usage error (a malformed `--bind` address such as `999.1.1.1`
+included). Otherwise it serves until stopped (Ctrl-C).
 
 ## What this example shows
 
@@ -205,8 +206,16 @@ for a usage error. Otherwise it serves until stopped (Ctrl-C).
   refused before the file system is touched.
 - **Working within the toolchain.** No `stat()` in `io.fs` means no
   `Last-Modified`, so `304` comes from a content hash; the access log's UTC
-  time is computed from `system.time.realtimeNs()` with integer date
-  arithmetic.
+  time is `system.time.realtimeNs()` through `core.datetime`'s
+  `DateTime.utcFromTimestamp`.
+- **What Stage0 runs.** Everything here runs on Stage0, so the code uses
+  what only Stage0 runs in Loup 1.26.0: the listing page is an `(html)`
+  template fence with `{% if %}` and `{% for %}` directives and the `escape`
+  filter, the method check is `req.method not in ["GET", "HEAD"]`, and the
+  ETag's FNV-1a hash is `uint32` arithmetic under `@overflowWrapping`.
+  `--bind` is checked with `net.addressing`, and the end-to-end tests find a
+  free port and wait for the server with `net.tcp` and `core.waiting`
+  (`tests/netcheck.lpscr`).
 
 ## Limitations (Loup 1.26.0)
 
@@ -219,6 +228,9 @@ for a usage error. Otherwise it serves until stopped (Ctrl-C).
 - One connection at a time, one read of up to 64 KiB per request,
   `Connection: close` (the `net.http` MVP). No ranges, compression or TLS.
 - The access log's client address is `-`: the handler is not given it.
+- A request line `net.http` cannot parse, or a connection that sends
+  nothing, reaches the handler as `GET / HTTP/1.1`, so it is answered (and
+  logged) as one rather than with `400`.
 - No `Last-Modified`/`If-Modified-Since` (no `stat()`), and symbolic links
   are followed (they cannot be told apart from their targets).
 
@@ -237,6 +249,7 @@ lib/etag.loup               # FNV-1a entity tags, If-None-Match
 lib/accesslog.loup          # Combined Log Format lines, UTC dates
 tests/*_test.lpscr          # unit tests, no sockets (make test)
 tests/e2e.sh                # server on a free port, checked with curl (make e2e)
+tests/netcheck.lpscr        # e2e helper: a free port, wait for the server
 tests/fixtures/site/        # the site the tests serve
 specs/httpd/                # requirements, design, tasks
 ```

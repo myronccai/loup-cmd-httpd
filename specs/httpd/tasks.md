@@ -18,3 +18,7 @@
   - _Requirements: 1.1, 4.1, 4.2, 4.3, 4.4, 4.6_
 - [x] 9. Unit tests through `parseRequest`; end-to-end tests with a background server and curl
   - _Requirements: all_
+- [x] 10. Reject a malformed `--bind` address as a usage error (`net.addressing`)
+  - _Requirements: 4.2_
+- [x] 11. Language features Stage0 runs: the listing as an `(html)` template fence with `escape`, `not in` for methods, `@overflowWrapping` FNV-1a, `core.datetime` for log times; `tests/netcheck.lpscr` (`net.tcp`, `core.waiting`) for the end-to-end tests
+  - _Requirements: all_

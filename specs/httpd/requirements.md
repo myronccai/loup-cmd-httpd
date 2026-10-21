@@ -97,8 +97,9 @@ when the server cannot run so that I can script it.
 1. THE program SHALL accept `-p/--port PORT`, `-b/--bind ADDRESS`,
    `-q/--quiet`, `-h/--help` and `-V/--version`, with values attached or
    separate (`-p8000`, `-p 8000`, `--port=8000`), and at most one DIR.
-2. WHEN an option is unknown or invalid (a port outside 1 to 65535, a second
-   DIR), THE program SHALL print `httpd: MESSAGE` and
+2. WHEN an option is unknown or invalid (a port outside 1 to 65535, a
+   malformed bind address, a second DIR), THE program SHALL print
+   `httpd: MESSAGE` and
    `Try 'httpd --help' for more information.` on standard error and exit with
    status 2.
 3. WHEN DIR is not a directory, THE program SHALL print

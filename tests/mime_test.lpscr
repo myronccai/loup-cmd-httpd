@@ -3,9 +3,10 @@
 # Unit tests for httpd's content types by extension (lib/mime.loup).
 #
 # Runtime: host.scripted, run by the test runner: `make test` interprets this
-# file with Stage0 (`loup-bootstrap test --file tests/mime_test.lpscr`, one
-# file at a time), one test per `func test_*()`. It imports lib/ by relative
-# path (`from ..lib.mime`) and opens no socket; it is not part of the program.
+# file with Stage0, one file and one test at a time
+# (`loup-bootstrap test --no-parallel --file tests/mime_test.lpscr`), one test
+# per `func test_*()`. It imports lib/ by relative path (`from ..lib.mime`)
+# and opens no socket; it is not part of the program.
 
 from debug.assert import (expectEq);
 from ..lib.mime import (content_type, DEFAULT_TYPE);

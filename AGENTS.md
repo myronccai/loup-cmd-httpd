@@ -29,17 +29,18 @@ mistakes. Load those only as needed.
 │   └── httpd.lpscr              # entry script (host.scripted, executable): options, checks, serve(), access log
 ├── lib/                         # host.dual modules
 │   ├── appinfo.loup             # APP_NAME, APP_VERSION, SERVER, exit statuses
-│   ├── args.loup                # struct Options, parse_args(), parse_port()
+│   ├── args.loup                # struct Options, parse_args(), parse_port(), is_bind_address(), split_option()
 │   ├── usage.loup               # usage(), version_line()
 │   ├── handler.loup             # handle(root, req), finish(), respond(root, req), error_response()
 │   ├── paths.loup               # path_segments(): decode and refuse, fs_path(), display_path()
 │   ├── mime.loup                # content_type()
-│   ├── listing.loup             # struct Entry, listing_page(), html_escape()
+│   ├── listing.loup             # struct Entry, listing_page() (an html template fence), href(), label()
 │   ├── etag.loup                # fnv1a(), etag_of(), etag_matches()
-│   └── accesslog.loup           # log_line(), clf_time(), civil_from_days()
+│   └── accesslog.loup           # log_line(), clf_time() (core.datetime)
 ├── tests/
 │   ├── *_test.lpscr             # unit tests: func test_*(): void (no sockets)
 │   ├── e2e.sh                   # end-to-end: server on a free port, curl, access log
+│   ├── netcheck.lpscr           # e2e helper (net.tcp): free-port, wait PORT [PATH]
 │   └── fixtures/site/           # the site the tests serve (a binary PNG, a dotfile, nested dirs)
 ├── specs/httpd/                 # requirements.md, design.md, tasks.md
 ├── skills/loup-programmer/      # the Loup skill and its references
@@ -48,8 +49,8 @@ mistakes. Load those only as needed.
 
 ## Check, run and test
 
-Prerequisites: Loup 1.26.0 (`loup-bootstrap` on `PATH`), `make`, `bash`,
-`curl` and `python3` (the end-to-end tests use it to find a free port).
+Prerequisites: Loup 1.26.0 (`loup-bootstrap` on `PATH`), `make`, `bash` and
+`curl`.
 
 Loup Lite comes from <https://github.com/code-craft-ai-company/loup-releases>;
 [README.md](README.md#installing-loup-lite) has the install commands.
@@ -58,8 +59,8 @@ Loup Lite comes from <https://github.com/code-craft-ai-company/loup-releases>;
 |------|---------|-------|
 | Serve a directory | `make run ARGS="-p 8000 tests/fixtures/site"` | `loup-bootstrap run --deny-all --allow-fs --allow-net bin/httpd.lpscr -- ARGS` |
 | Run directly | `./bin/httpd.lpscr -p 8000 DIR` | the shebang grants the capabilities |
-| Type-check | `make check` | `loup-bootstrap check FILE` for each `bin/*.lpscr` and its imports |
-| Unit tests | `make test` | each `tests/*_test.lpscr` in turn |
+| Type-check | `make check` | `loup-bootstrap check FILE` for each `bin/*.lpscr` and its imports, and `tests/netcheck.lpscr` |
+| Unit tests | `make test` | each `tests/*_test.lpscr` in turn, `--no-parallel` |
 | One test file | `make test TESTS=tests/handler_test.lpscr` | |
 | Matching tests | `make test TEST_ARGS="--filter etag"` | |
 | End-to-end tests | `make e2e` | `tests/e2e.sh`: starts the server, always kills it |
@@ -81,7 +82,15 @@ Toolchain facts this project depends on (Loup 1.26.0, Linux x86-64):
 - `bytes.decode()` turns invalid UTF-8 into U+FFFD; `is_text()` relies on
   that.
 - `loup-bootstrap test` with all files at once fails random tests with an
-  empty `RuntimeError` on a busy machine; the Makefile runs one file at a time.
+  empty `RuntimeError` on a busy machine, and `--file` alone still runs a
+  file's tests in parallel; the Makefile runs one file at a time with
+  `--no-parallel`.
+- `lib/handler.loup`, `lib/args.loup` and `lib/listing.loup` use features
+  only Stage0 runs in 1.26.0 (`in`/`not in`, escapes in `i"..."`, template
+  fences with filters); `lib/etag.loup` uses `@overflowWrapping`, which the
+  self-hosted `loup run` ignores. Keep them on Stage0.
+- `net.http` answers an unparsable request line (or an empty connection) as
+  `GET / HTTP/1.1`; `parseRequest` also upper-cases the method.
 
 ## Making a change
 

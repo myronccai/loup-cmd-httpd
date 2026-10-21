@@ -5,10 +5,10 @@
 # and display paths.
 #
 # Runtime: host.scripted, run by the test runner: `make test` interprets this
-# file with Stage0 (`loup-bootstrap test --file tests/paths_test.lpscr`, one
-# file at a time), one test per `func test_*()`. It imports lib/ by relative
-# path (`from ..lib.paths`) and opens no socket; it is not part of the
-# program.
+# file with Stage0, one file and one test at a time
+# (`loup-bootstrap test --no-parallel --file tests/paths_test.lpscr`), one
+# test per `func test_*()`. It imports lib/ by relative path
+# (`from ..lib.paths`) and opens no socket; it is not part of the program.
 
 from debug.assert import (expect, expectEq);
 from ..lib.paths import (path_segments, fs_path, display_path);
@@ -43,6 +43,8 @@ func test_traversal_is_refused(): void {
 func test_hidden_and_bad_paths(): void {
     expectEq(segments("/.git/config"), "404", "hidden directory");
     expectEq(segments("/docs/.hidden"), "404", "hidden file");
+    expectEq(segments("/..x"), "404", "dot-dot prefix is hidden, not traversal");
+    expectEq(segments("/a/.../b"), "404", "three dots");
     expectEq(segments("/a%zz"), "400", "bad escape");
     expectEq(segments("/a%2"), "400", "truncated escape");
     expectEq(segments("/a%00b"), "400", "NUL");

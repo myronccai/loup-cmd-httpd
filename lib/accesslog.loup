@@ -12,32 +12,10 @@
 # project compiles it.
 
 from net.http import (Request, Response);
+from core.datetime import (DateTime);
 from system.text import (padStart);
 
 let MONTHS: list[string] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-pub struct CivilDate {
-    pub year: int;
-    pub month: int;
-    pub day: int;
-}
-
-# The civil date of a day number (days since 1970-01-01). Howard Hinnant's
-# civil_from_days: count from 0000-03-01 so that the leap day ends the year,
-# split into 400-year eras of 146097 days, then find the year of the era,
-# the day of that year, and a March-based month.
-pub func civil_from_days(days: int): CivilDate {
-    let z = days + 719468;
-    let era = (if (z >= 0) { z } else { z - 146096 }) / 146097;
-    let doe = z - era * 146097;
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let day = doy - (153 * mp + 2) / 5 + 1;
-    let month = if (mp < 10) { mp + 3 } else { mp - 9 };
-    let year = yoe + era * 400 + (if (month <= 2) { 1 } else { 0 });
-    return CivilDate(year = year, month = month, day = day);
-}
 
 func pad2(n: int): string {
     return padStart(str(n), 2, "0");
@@ -45,10 +23,8 @@ func pad2(n: int): string {
 
 # `20/Oct/2026:09:15:02 +0000` for seconds since 1970 (UTC).
 pub func clf_time(epoch_seconds: int): string {
-    let days = epoch_seconds / 86400;
-    let rest = epoch_seconds % 86400;
-    let date = civil_from_days(days);
-    return pad2(date.day) + "/" + MONTHS[date.month - 1] + "/" + str(date.year) + ":" + pad2(rest / 3600) + ":" + pad2((rest / 60) % 60) + ":" + pad2(rest % 60) + " +0000";
+    let t = DateTime.utcFromTimestamp(epoch_seconds as float);
+    return pad2(t.day) + "/" + MONTHS[t.month - 1] + "/" + str(t.year) + ":" + pad2(t.hour) + ":" + pad2(t.minute) + ":" + pad2(t.second) + " +0000";
 }
 
 # A quoted log field: `"` and `\` escaped, `-` for an empty value.

@@ -22,14 +22,14 @@ serve ─► closure(req) ─► respond(root, req) ─► handle(root, req) ─
 |---|---|
 | `bin/httpd.lpscr` | top level: options, directory check, banner, `serve` with the logging closure |
 | `lib/appinfo.loup` | name, version, `SERVER`, exit statuses |
-| `lib/args.loup` | `Options`, `parse_args` (short clusters, attached values, `--name=value`), `parse_port` |
+| `lib/args.loup` | `Options`, `parse_args` (short clusters, attached values, `--name=value`), `parse_port`, `is_bind_address` (`net.addressing`), `split_option` |
 | `lib/usage.loup` | `usage()`, `version_line()` |
 | `lib/handler.loup` | `handle`, `finish`, `respond`, `error_response`, `content_response`, `is_text` |
 | `lib/paths.loup` | `path_segments`, `fs_path`, `display_path` |
 | `lib/mime.loup` | `content_type` from a table keyed by lower-cased extension |
-| `lib/listing.loup` | `Entry`, `sorted_entries`, `listing_page`, `html_escape` |
+| `lib/listing.loup` | `Entry`, `sorted_entries`, `href`, `label`, `listing_page` (an `(html)` template fence, names through the `escape` filter) |
 | `lib/etag.loup` | `fnv1a`, `etag_of`, `etag_matches` |
-| `lib/accesslog.loup` | `civil_from_days`, `clf_time`, `log_line` |
+| `lib/accesslog.loup` | `clf_time` (`core.datetime`), `log_line` |
 
 ### Handling a request
 
@@ -58,8 +58,8 @@ serve ─► closure(req) ─► respond(root, req) ─► handle(root, req) ─
 
 `log_line(req, resp, epoch_seconds)` writes Combined Log Format with host,
 ident and user `-` (the handler does not see the client address), the time
-from `clf_time` (UTC; `civil_from_days` is the inverse of the usual
-days-from-civil algorithm, integers only), the request line as received,
+from `clf_time` (UTC, through `core.datetime.DateTime.utcFromTimestamp`),
+the request line as received,
 the status, the body's byte length (`-` for zero), and the Referer and
 User-Agent headers quoted with `"` and `\` escaped.
 
@@ -95,10 +95,12 @@ User-Agent headers quoted with `"` and `\` escaped.
   and `HEAD`, `is_text`.
 - `tests/listing_test.lpscr`, `tests/mime_test.lpscr`,
   `tests/etag_test.lpscr` (FNV-1a checked against an independent
-  implementation), `tests/accesslog_test.lpscr` (dates, escaping, dashes),
+  implementation and the published vectors), `tests/accesslog_test.lpscr`
+  (dates, escaping, dashes),
   `tests/args_test.lpscr`.
 - `tests/e2e.sh`: command-line errors and the missing `net` grant; then a
-  server on a free port over a copy of the fixture site in `$TMP`, checked
+  server on a free port (from `tests/netcheck.lpscr`, which also waits for
+  it to answer) over a copy of the fixture site in `$TMP`, checked
   with `curl --path-as-is` (200, 301, 304, 400, 403, 404, 405, 501, HEAD,
   listing body, headers), a second server on the same port, and the access
   log compared line by line with the timestamps masked. A trap kills the

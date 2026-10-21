@@ -7,7 +7,9 @@
 # Runtime: host.dual, but only ever interpreted here, by Stage0: lib/handler
 # imports it, so it runs with bin/httpd.lpscr under `loup-bootstrap run`, and
 # with tests/etag_test.lpscr and tests/handler_test.lpscr under
-# `loup-bootstrap test`. Nothing in this project compiles it.
+# `loup-bootstrap test`. Nothing in this project compiles it. fnv1a() needs
+# Stage0: the self-hosted `loup run` ignores @overflowWrapping and stops at
+# the first multiplication that overflows.
 
 from system.text import (padStart);
 
@@ -23,13 +25,17 @@ func hex(n: int, width: int): string {
     return padStart(out, width, "0");
 }
 
-# 32-bit FNV-1a of the bytes.
+# 32-bit FNV-1a of the bytes. The hash is defined on 32-bit arithmetic that
+# wraps, which is what uint32 under @overflowWrapping does (without the
+# annotation, an overflowing uint32 multiplication throws).
+@overflowWrapping
 pub func fnv1a(data: bytes): int {
-    var h = 2166136261;
+    var h: uint32 = 2166136261u32;
     for (i in 0..data.len()) {
-        h = ((h ^ data[i]) * 16777619) & 0xFFFFFFFF;
+        h ^= data[i] as uint32;
+        h *= 16777619u32;
     }
-    return h;
+    return h as int;
 }
 
 # `"<length in hex>-<FNV-1a in hex>"`, quoted as the header needs.

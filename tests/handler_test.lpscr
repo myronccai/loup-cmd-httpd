@@ -3,16 +3,22 @@
 # Unit tests for httpd's request handler (lib/handler.loup), called directly
 # with parsed requests over tests/fixtures/site: index pages, files and
 # their types, redirects, listings, conditional GET, refusals, methods, and
-# what finish() adds (Server header, HEAD bodies, 500 on an exception).
+# what finish() adds (Server header, HEAD bodies, 500 on an exception). One
+# test makes unreadable files with chmod in a temporary directory, and is
+# skipped when it runs as root.
 #
 # Runtime: host.scripted, run by the test runner: `make test` interprets this
-# file with Stage0 (`loup-bootstrap test --file tests/handler_test.lpscr`, one
-# file at a time), one test per `func test_*()`. It imports lib/ by relative
-# path (`from ..lib.handler`), reads tests/fixtures/site (make runs it from
-# the repository root) and opens no socket; it is not part of the program.
+# file with Stage0, one file and one test at a time
+# (`loup-bootstrap test --no-parallel --file tests/handler_test.lpscr`), one
+# test per `func test_*()`. It imports lib/ by relative path
+# (`from ..lib.handler`), reads tests/fixtures/site (make runs it from the
+# repository root) and opens no socket; it is not part of the program.
 
 from debug.assert import (expect, expectEq);
 from net.http import (Request, Response, parseRequest);
+from io.fs import (createDir, writeText, removeDir, isDir);
+from io.proc import (output, check);
+from testing import (skipTest);
 from ..lib.handler import (handle, respond, finish, error_response, is_text, content_response);
 
 let ROOT: string = "tests/fixtures/site";
@@ -76,6 +82,28 @@ func test_refusals(): void {
     expectEq(get("/a%zz").status, 400, "bad escape");
     expectEq(get("/pixel.png").status, 501, "binary file");
     expectEq(get("/missing.txt").body, "404 Not Found\n", "error body");
+}
+
+# A file or directory that exists but cannot be read is a 403. Root can read
+# it whatever its mode, so then there is nothing to test. The finally block
+# gives the permissions back so that the directory can be removed, whether
+# the expectations held or not.
+func test_unreadable_is_403(): void {
+    if (output(["id", "-u"]).trim() == "0") {
+        skipTest("running as root: chmod 000 does not stop root reading");
+    }
+    let dir = output(["mktemp", "-d"]).trim();
+    expect(dir.len() > 0 and isDir(dir), "temporary directory");
+    try {
+        writeText(dir + "/locked.txt", "secret\n");
+        createDir(dir + "/locked");
+        check(["chmod", "000", dir + "/locked.txt", dir + "/locked"]);
+        expectEq(handle(dir, parseRequest("GET /locked.txt HTTP/1.1\r\n\r\n")).status, 403, "file");
+        expectEq(handle(dir, parseRequest("GET /locked/ HTTP/1.1\r\n\r\n")).status, 403, "directory");
+    } finally {
+        check(["chmod", "-R", "u+rwx", dir]);
+        removeDir(dir);
+    }
 }
 
 func test_methods(): void {

@@ -1,31 +1,29 @@
 @mode(host.scripted)
 
-# Unit tests for httpd's access log lines (lib/accesslog.loup): the civil
-# date of a day number, the CLF timestamp, and whole log lines with and
-# without a body and request headers.
+# Unit tests for httpd's access log lines (lib/accesslog.loup): the CLF
+# timestamp across dates (core.datetime does the calendar), and whole log
+# lines with and without a body and request headers.
 #
 # Runtime: host.scripted, run by the test runner: `make test` interprets this
-# file with Stage0 (`loup-bootstrap test --file tests/accesslog_test.lpscr`,
-# one file at a time), one test per `func test_*()`. It imports lib/ by
-# relative path (`from ..lib.accesslog`) and opens no socket; it is not part
-# of the program.
+# file with Stage0, one file and one test at a time
+# (`loup-bootstrap test --no-parallel --file tests/accesslog_test.lpscr`), one
+# test per `func test_*()`. It imports lib/ by relative path
+# (`from ..lib.accesslog`) and opens no socket; it is not part of the program.
 
 from debug.assert import (expectEq);
 from net.http import (Request, Response, parseRequest);
-from ..lib.accesslog import (civil_from_days, clf_time, log_line);
-
-func test_civil_from_days(): void {
-    let epoch = civil_from_days(0);
-    expectEq(i"{$ epoch.year $}-{$ epoch.month $}-{$ epoch.day $}", "1970-1-1", "epoch");
-    let leap = civil_from_days(19782);
-    expectEq(i"{$ leap.year $}-{$ leap.month $}-{$ leap.day $}", "2024-2-29", "leap day");
-    let later = civil_from_days(20746);
-    expectEq(i"{$ later.year $}-{$ later.month $}-{$ later.day $}", "2026-10-20", "2026-10-20");
-}
+from ..lib.accesslog import (clf_time, log_line);
 
 func test_clf_time(): void {
     expectEq(clf_time(0), "01/Jan/1970:00:00:00 +0000", "epoch");
     expectEq(clf_time(1792480092), "20/Oct/2026:07:08:12 +0000", "a Tuesday morning");
+}
+
+func test_clf_time_calendar(): void {
+    expectEq(clf_time(19782 * 86400), "29/Feb/2024:00:00:00 +0000", "leap day");
+    expectEq(clf_time(951868799), "29/Feb/2000:23:59:59 +0000", "leap day of a 400-year leap year");
+    expectEq(clf_time(946684799), "31/Dec/1999:23:59:59 +0000", "last second of a year");
+    expectEq(clf_time(4107542400), "01/Mar/2100:00:00:00 +0000", "2100 is not a leap year");
 }
 
 func test_log_line(): void {
