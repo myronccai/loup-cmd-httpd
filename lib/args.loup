@@ -6,6 +6,17 @@
 #   Value options take `-p 8000`, `-p8000`, `--port 8000` or `--port=8000`;
 #   short flags combine (`-qp8000`). Options may follow DIR; `--` ends the
 #   options.
+#
+# Runtime: host.dual, but only ever interpreted here, by Stage0:
+# bin/httpd.lpscr imports it under `loup-bootstrap run` and
+# tests/args_test.lpscr under `loup-bootstrap test`. Nothing in this project
+# compiles it.
+#
+# Structure: parse_args() makes one pass over the words. Each option word is
+# split into a name and an attached value (`--port=8000`, `-p8000`); a value
+# option without one takes the next word. An if-chain then handles the name,
+# and the tail of a short-flag cluster is put back in `pending` to be read
+# as an option of its own. Option errors use GNU getopt's wording.
 
 from core.string_utils import (isDigits);
 
@@ -83,6 +94,9 @@ pub func parse_args(argv: list[string]): Result[Options, string] {
             i += 1;
         }
 
+        # Value options first; then an attached value on any other name, which
+        # is an error for a long option and the rest of a cluster for a short
+        # flag; then the plain flags.
         if (name == "-p" or name == "--port") {
             let text = value.unwrap_or("");
             port = match parse_port(text) {

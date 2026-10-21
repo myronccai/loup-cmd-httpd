@@ -1,5 +1,14 @@
 @mode(host.scripted)
 
+# Unit tests for httpd's entity tags (lib/etag.loup): the FNV-1a hash, the
+# tag's format, and If-None-Match matching.
+#
+# Runtime: host.scripted, run by the test runner: `make test` interprets this
+# file with Stage0 (`loup-bootstrap test --file tests/etag_test.lpscr`, one
+# file at a time), one test per `func test_*()`. It imports lib/ by relative
+# path (`from ..lib.etag`), reads tests/fixtures/site (make runs it from the
+# repository root) and opens no socket; it is not part of the program.
+
 from debug.assert import (expect, expectEq);
 from ..lib.etag import (fnv1a, etag_of, etag_matches);
 

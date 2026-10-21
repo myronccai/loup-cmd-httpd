@@ -1,8 +1,21 @@
 @mode(host.dual)
 
-# The request handler: a plain function from Request to Response. The
+# httpd's request handler: a plain function from Request to Response. The
 # server calls it for each connection; the tests call it with
 # `parseRequest("GET / HTTP/1.1\r\n\r\n")` and no socket at all.
+#
+# Runtime: host.dual, but only ever interpreted here, by Stage0:
+# bin/httpd.lpscr imports it under `loup-bootstrap run` and
+# tests/handler_test.lpscr under `loup-bootstrap test`. Nothing in this
+# project compiles it.
+#
+# Structure: handle() routes one request: the method (405 unless GET or
+# HEAD), the path (lib/paths answers 400, 403 or 404 before the file system
+# is touched), then a directory (301 to add the slash, its index.html, or a
+# listing), a file, or 404. content_response() turns a file's bytes into
+# 200 with an ETag, 304 for a matching If-None-Match, or 501 for binary
+# content. finish() readies any answer for the wire, and respond(), the
+# server's handler, is handle() passed through finish().
 
 from net.http import (Request, Response, statusReason);
 from io.fs import (isDir, isFile, listDir);
@@ -47,6 +60,8 @@ pub func content_response(req: Request, name: string, raw: bytes): Response {
     return resp;
 }
 
+# A file that exists but cannot be read is a 403. Stage0 throws a catchable
+# IoError for it (a native build would end the program instead).
 func file_response(req: Request, path: string): Response {
     try {
         let raw = readBytes(path);
@@ -56,6 +71,8 @@ func file_response(req: Request, path: string): Response {
     }
 }
 
+# Dot-files are left out of a listing: path_segments() refuses to serve
+# them anyway (404).
 func listing_response(url_path: string, dir: string): Response {
     var entries: list[Entry] = [];
     try {
@@ -83,6 +100,8 @@ pub func handle(root: string, req: Request): Response {
     };
     let path = fs_path(root, segments);
     if (isDir(path)) {
+        # A directory URL must end with `/` so that the relative links in its
+        # listing and index.html resolve inside it.
         if (!req.path.endsWith("/")) {
             let query = if (req.rawQuery.len() > 0) { "?" + req.rawQuery } else { "" };
             return Response.redirect(req.path + "/" + query, 301);

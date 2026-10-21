@@ -1,5 +1,16 @@
 @mode(host.scripted)
 
+# Unit tests for httpd's request handler (lib/handler.loup), called directly
+# with parsed requests over tests/fixtures/site: index pages, files and
+# their types, redirects, listings, conditional GET, refusals, methods, and
+# what finish() adds (Server header, HEAD bodies, 500 on an exception).
+#
+# Runtime: host.scripted, run by the test runner: `make test` interprets this
+# file with Stage0 (`loup-bootstrap test --file tests/handler_test.lpscr`, one
+# file at a time), one test per `func test_*()`. It imports lib/ by relative
+# path (`from ..lib.handler`), reads tests/fixtures/site (make runs it from
+# the repository root) and opens no socket; it is not part of the program.
+
 from debug.assert import (expect, expectEq);
 from net.http import (Request, Response, parseRequest);
 from ..lib.handler import (handle, respond, finish, error_response, is_text, content_response);

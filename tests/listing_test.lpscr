@@ -1,5 +1,14 @@
 @mode(host.scripted)
 
+# Unit tests for httpd's directory listings (lib/listing.loup): HTML
+# escaping, entry order, and the page itself.
+#
+# Runtime: host.scripted, run by the test runner: `make test` interprets this
+# file with Stage0 (`loup-bootstrap test --file tests/listing_test.lpscr`, one
+# file at a time), one test per `func test_*()`. It imports lib/ by relative
+# path (`from ..lib.listing`) and opens no socket; it is not part of the
+# program.
+
 from debug.assert import (expectEq);
 from ..lib.listing import (Entry, html_escape, sorted_entries, listing_page);
 

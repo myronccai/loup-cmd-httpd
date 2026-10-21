@@ -1,9 +1,15 @@
 @mode(host.dual)
 
-# Access log lines in Combined Log Format, which loup-cmd-logwatch reads:
+# httpd's access log: one line per request in Combined Log Format, which
+# loup-cmd-logwatch reads:
 #   - - - [20/Oct/2026:09:15:02 +0000] "GET /docs/ HTTP/1.1" 200 412 "-" "curl/8.9.1"
 # net.http does not give the handler the client's address, so the host field
 # is `-`.
+#
+# Runtime: host.dual, but only ever interpreted here, by Stage0:
+# bin/httpd.lpscr imports it under `loup-bootstrap run` and
+# tests/accesslog_test.lpscr under `loup-bootstrap test`. Nothing in this
+# project compiles it.
 
 from net.http import (Request, Response);
 from system.text import (padStart);
@@ -16,7 +22,10 @@ pub struct CivilDate {
     pub day: int;
 }
 
-# The civil date of a day number (days since 1970-01-01).
+# The civil date of a day number (days since 1970-01-01). Howard Hinnant's
+# civil_from_days: count from 0000-03-01 so that the leap day ends the year,
+# split into 400-year eras of 146097 days, then find the year of the era,
+# the day of that year, and a March-based month.
 pub func civil_from_days(days: int): CivilDate {
     let z = days + 719468;
     let era = (if (z >= 0) { z } else { z - 146096 }) / 146097;

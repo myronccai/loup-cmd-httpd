@@ -1,8 +1,13 @@
 @mode(host.dual)
 
-# Maps a request path onto the served directory, refusing anything that
-# could leave it. The check works on the decoded path, before the file
+# Maps an httpd request path onto the served directory, refusing anything
+# that could leave it. The check works on the decoded path, before the file
 # system is touched: `%2e%2e/` is `../` too.
+#
+# Runtime: host.dual, but only ever interpreted here, by Stage0: lib/handler
+# imports it, so it runs with bin/httpd.lpscr under `loup-bootstrap run`, and
+# with tests/paths_test.lpscr and tests/handler_test.lpscr under
+# `loup-bootstrap test`. Nothing in this project compiles it.
 
 from data.query import (percentDecode);
 

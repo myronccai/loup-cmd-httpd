@@ -1,5 +1,15 @@
 @mode(host.scripted)
 
+# Unit tests for httpd's request path mapping (lib/paths.loup): decoding,
+# refusing traversal, hidden and malformed paths, and building file-system
+# and display paths.
+#
+# Runtime: host.scripted, run by the test runner: `make test` interprets this
+# file with Stage0 (`loup-bootstrap test --file tests/paths_test.lpscr`, one
+# file at a time), one test per `func test_*()`. It imports lib/ by relative
+# path (`from ..lib.paths`) and opens no socket; it is not part of the
+# program.
+
 from debug.assert import (expect, expectEq);
 from ..lib.paths import (path_segments, fs_path, display_path);
 

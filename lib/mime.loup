@@ -1,6 +1,11 @@
 @mode(host.dual)
 
-# Content types by file extension.
+# Content types by file extension, for httpd's Content-Type header.
+#
+# Runtime: host.dual, but only ever interpreted here, by Stage0: lib/handler
+# imports it, so it runs with bin/httpd.lpscr under `loup-bootstrap run`, and
+# with tests/mime_test.lpscr and tests/handler_test.lpscr under
+# `loup-bootstrap test`. Nothing in this project compiles it.
 
 from io.path import (extname);
 

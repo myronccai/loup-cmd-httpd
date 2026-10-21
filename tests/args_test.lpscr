@@ -1,5 +1,14 @@
 @mode(host.scripted)
 
+# Unit tests for httpd's command-line parsing (lib/args.loup): defaults,
+# value options in each spelling, flags and DIR, port validation, and the
+# usage error messages.
+#
+# Runtime: host.scripted, run by the test runner: `make test` interprets this
+# file with Stage0 (`loup-bootstrap test --file tests/args_test.lpscr`, one
+# file at a time), one test per `func test_*()`. It imports lib/ by relative
+# path (`from ..lib.args`) and opens no socket; it is not part of the program.
+
 from debug.assert import (expect, expectEq);
 from ..lib.args import (Options, parse_args, parse_port);
 

@@ -1,6 +1,11 @@
 @mode(host.dual)
 
-# The HTML page that lists a directory without an index.html.
+# The HTML page that httpd sends for a directory without an index.html.
+#
+# Runtime: host.dual, but only ever interpreted here, by Stage0: lib/handler
+# imports it, so it runs with bin/httpd.lpscr under `loup-bootstrap run`, and
+# with tests/listing_test.lpscr and tests/handler_test.lpscr under
+# `loup-bootstrap test`. Nothing in this project compiles it.
 
 from data.query import (percentEncode);
 
@@ -38,7 +43,8 @@ func item(href: string, label: string): string {
     return "<li><a href=\"" + href + "\">" + html_escape(label) + "</a></li>";
 }
 
-# The listing of the directory at URL path `url_path` (ends with `/`).
+# The listing of the directory at URL path `url_path` (ends with `/`). The
+# links are relative to it: an entry's name, or `../` for the parent.
 pub func listing_page(url_path: string, entries: list[Entry]): string {
     let title = "Index of " + html_escape(url_path);
     var lines: list[string] = [

@@ -3,12 +3,19 @@
 
 # httpd: serve the files under a directory over HTTP.
 #
-# This script is the program's top level: options, the start-up checks, and
-# net.http's serve() with a handler that answers each request (lib/handler)
-# and writes the access log line. It needs the `fs` and `net` capabilities
-# and nothing else, which the shebang line grants. On Linux x86-64 it runs
-# under Stage0 (`loup-bootstrap run`): the self-hosted `loup run` there has
-# no network support.
+# Runtime: host.scripted. Stage0 interprets this file from source with
+# `loup-bootstrap run --deny-all --allow-fs --allow-net bin/httpd.lpscr --
+# ARGS`: the shebang line, `make run`, tests/e2e.sh and the CI smoke test all
+# run it that way. Its top-level statements run in order and there is no
+# compile step. The flags grant the `fs` and `net` capabilities and nothing
+# else, and Stage0 enforces them. The self-hosted `loup run` cannot run it on
+# Linux x86-64: it has no network support.
+#
+# Structure: this script is the program's top level. It parses the command
+# line (a usage error exits 2), answers --help and --version, checks that
+# DIR is a directory, then hands net.http's serve() a handler that answers
+# each request with lib/handler's respond() and writes its access log line
+# (lib/accesslog). serve() comes back only by throwing, when it cannot listen.
 
 from net.http import (Request, Response, serve);
 from io.fs import (isDir);
@@ -41,6 +48,7 @@ if (!isDir(opts.root)) {
 
 let root = opts.root;
 let quiet = opts.quiet;
+# Messages go to standard error: standard output carries only the access log.
 printErr(i"{$ APP_NAME $}: serving {$ root $} on http://{$ opts.host $}:{$ opts.port $}/");
 try {
     # Serves one connection at a time, forever.
